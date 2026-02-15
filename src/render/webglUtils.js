@@ -75,7 +75,48 @@ export function setupQuad(gl, program) {
          1,  1,
     ]);
     
-    // Flip Y coordinates to correct image orientation (WebGL bottom-left vs image top-left)
+    // Normal texture coordinates (0,0 at bottom-left - WebGL standard)
+    const texCoords = new Float32Array([
+        0, 0,
+        1, 0,
+        0, 1,
+        0, 1,
+        1, 0,
+        1, 1,
+    ]);
+    
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+    
+    const texCoordBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+    
+    const positionLocation = gl.getAttribLocation(program, 'a_position');
+    const texCoordLocation = gl.getAttribLocation(program, 'a_texCoord');
+    
+    return {
+        positionBuffer,
+        texCoordBuffer,
+        positionLocation,
+        texCoordLocation
+    };
+}
+
+export function setupQuadFlipped(gl, program) {
+    // Create a quad that covers the entire canvas
+    const positions = new Float32Array([
+        -1, -1,
+         1, -1,
+        -1,  1,
+        -1,  1,
+         1, -1,
+         1,  1,
+    ]);
+    
+    // FLIPPED Y coordinates to correct image orientation for display
+    // (Image files have 0,0 at top-left, WebGL expects 0,0 at bottom-left)
     const texCoords = new Float32Array([
         0, 1,
         1, 1,

@@ -1,107 +1,140 @@
-# Continuous Game of Life - RGBA
+# Continuous Game of Life - RGBA (v2.0)
 
-A WebGL-based implementation of SmoothLife (continuous Game of Life) for RGBA images with restoration forces.
+A WebGL-based implementation of SmoothLife with **edge-guided constraints**, **momentum-based flow**, and **smart patch injection**.
 
-## Features
+## What Makes This Special
 
-- **Continuous Cellular Automata**: Extends Conway's Game of Life to continuous space using the SmoothLife algorithm
-- **RGBA Evolution**: All four color channels evolve independently with luminance-based birth/death rules
-- **Color Bleeding**: Neighboring colors influence each other during transitions
-- **Restoration Force**: Original image continuously "pumps back in" creating trippy warping effects
-- **Real-time WebGL**: Fast GPU-accelerated computation using fragment shaders
-- **Interactive Controls**: Adjust all parameters in real-time
+This isn't just a trippy image filter - it's **Game of Life running on a continuous domain**, constrained by the edges of your image. The cellular automata rules create organic patterns, while edges keep the structure recognizable.
+
+### The Core Idea
+
+1. **Game of Life at the heart**: SmoothLife rules determine how pixels brighten/darken based on neighbors
+2. **Edges as anchors**: Edge detection keeps the structure tethered
+3. **Patches warp freely**: Areas between edges evolve under GoL rules
+4. **Smart injection**: Patches "remember" their original colors and inject them back
+5. **Momentum creates flow**: Changes accumulate, creating flowing, never-settling motion
 
 ## How It Works
 
-### SmoothLife Algorithm
-
-Based on the paper ["Generalization of Conway's Game of Life to a Continuous Domain"](https://arxiv.org/abs/1111.1567):
-
-1. **Inner Disk (m)**: Average luminance of pixels within inner radius
-2. **Outer Ring (n)**: Average luminance of pixels between inner and outer radius
-3. **Transition Function**: Smooth sigmoid-based birth/death rules
-4. **Color Bleeding**: RGB values blend with neighbors during transitions
-5. **Restoration**: Continuously pulls image back toward original state
-
-### RGBA Extension
-
-- **Luminance-based decisions**: Birth/death determined by luminance (weighted RGB average)
-- **Color bleeding**: RGB values from neighbors blend in during active transitions
-- **Alpha evolution**: Alpha channel evolves along with RGB
-- **Restoration force**: Prevents total divergence from original image
-
-## Usage
-
-1. Open `index.html` in a modern web browser
-2. Upload an image (automatically resized to max 1080px on longest axis)
-3. Adjust parameters:
-   - **Radii**: Inner and outer neighborhood sizes
-   - **Birth Interval**: When cells are "born"
-   - **Death Interval**: When cells "die"
-   - **Smoothness**: Transition sharpness (alpha)
-   - **Time Step**: Evolution speed
-   - **Restoration**: How strongly original image pulls back (0-0.5)
-4. Try presets for different effects
-
-## Parameters Explained
-
-- **Inner/Outer Radius**: Defines the neighborhood size for computing averages
-- **Birth Min/Max**: Cells with neighbor luminance in this range will brighten
-- **Death Min/Max**: Cells with neighbor luminance in this range will darken
-- **Smoothness (alphaM)**: Lower = sharper transitions, higher = smoother
-- **Time Step (deltaTime)**: How fast the simulation evolves
-- **Restoration**: Strength of pull back to original image (0 = none, 0.5 = strong)
-
-## Project Structure
+### The Pipeline
 
 ```
-continuous-game-of-life/
-├── index.html              # Main HTML entry point
-├── styles/
-│   └── main.css           # All styling
-├── src/
-│   ├── main.js            # Application orchestration
-│   ├── core/
-│   │   └── smoothlife.js  # WebGL SmoothLife engine
-│   ├── render/
-│   │   ├── shaders.js     # WebGL shaders (vertex, convolution, transition)
-│   │   ├── webglUtils.js  # WebGL utilities
-│   │   └── imageLoader.js # Image loading and resizing
-│   └── ui/
-│       └── controls.js    # UI parameter controls
-└── README.md
+Original Image
+    ↓
+Edge Detection (Sobel) → Identifies structure
+    ↓
+Patch Statistics → Learns dominant colors per region
+    ↓
+Convolution → Computes GoL neighborhoods (inner/outer)
+    ↓
+Transition → Applies GoL rules + momentum + injection
+    ↓
+Velocity Update → Tracks momentum for continuous flow
+    ↓
+Render → Beautiful warping constrained by edges
 ```
+
+### Artist-Friendly Controls
+
+Gone are the cryptic birth/death intervals! New controls:
+
+- **Chaos** (0-1): How unstable the GoL gets
+  - Low = stable, orderly patterns
+  - High = wild, overlapping birth/death creating perpetual motion
+  
+- **Flow** (0-1): How much momentum accumulates
+  - Low = changes happen locally, stop quickly
+  - High = changes ripple outward, create waves
+  
+- **Edge Anchor** (0-1): How strongly edges constrain
+  - Low = edges blur and warp
+  - High = edges stay sharp and fixed
+  
+- **Edge Detail** (0.05-0.8): Edge detection sensitivity
+  - Low = only major edges (simplified structure)
+  - High = fine details (intricate edge network)
+  
+- **Patch Memory** (0-1): How much patches remember original
+  - Low = patches diverge completely in color
+  - High = patches stay close to original palette
+  
+- **Turbulence** (0-1): Amount of smart disturbance
+  - Injects patch-characteristic colors over time
+  - Not random - respects original color distribution!
+
+## The Game of Life Connection
+
+Behind the scenes, it's still SmoothLife:
+- **Inner/Outer Radii**: Define the cellular neighborhoods
+- **Birth/Death Rules**: Determined by Chaos parameter
+- **Sigmoid Transitions**: Smooth, continuous birth/death
+- **Luminance-Based**: Brightness drives the rules
+- **Color Bleeding**: RGB follows the luminance decisions
+
+The beauty: **It's disguised Game of Life with artistic constraints!**
+
+## What's Different from v1
+
+### v1.0 (Original):
+- Full image restoration (boring stability)
+- Manual birth/death sliders (confusing)
+- No momentum (settled into equilibrium)
+- Random noise injection (no structure)
+
+### v2.0 (This Version):
+- ✅ Edge-only anchoring (structure preserved, interiors warp)
+- ✅ Artist-friendly controls (describes outcomes, not math)
+- ✅ Momentum/velocity field (perpetual motion)
+- ✅ Smart patch injection (respects original colors/texture)
+- ✅ Local variation in inertia (textured areas flow more)
 
 ## Technical Details
 
-### Two-Pass Rendering
+### Edge Detection
+- Sobel operator for gradient magnitude and direction
+- Adjustable sensitivity threshold
+- Stores: edge strength, edge direction (cos/sin), luminance
 
-1. **Convolution Pass**: Computes inner disk and outer ring averages
-2. **Transition Pass**: Applies SmoothLife rules, color bleeding, and restoration
+### Patch Statistics
+- Computes per-patch dominant colors
+- Avoids edges (weights by 1 - edge strength)
+- Stores: dominant RGB, color variance
 
-### Shader Architecture
+### Momentum System
+- Tracks velocity per pixel (stored in separate texture)
+- Inertia varies by:
+  - Distance from edges (center of patches = more inertia)
+  - Texture variance (textured areas = more momentum)
+  - Edge strength (edges = less momentum)
+- Creates naturally flowing behavior!
 
-- **Convolution Shader**: Samples circular neighborhoods, computes weighted averages
-- **Transition Shader**: Implements sigmoid birth/death, color blending, restoration
-- **Vertex Shader**: Simple fullscreen quad
+### Smart Injection
+- Uses Perlin noise for timing
+- Injects dominant patch colors with variance
+- Respects patch boundaries (edges block injection)
+- Strength controlled by Turbulence × Patch Memory
 
-### Performance
+## Usage Tips
 
-WebGL fragment shaders enable real-time computation for large images. The convolution pass samples in circular patterns optimized for typical radii (3-40 pixels).
+1. **For continuous warping**: Chaos = 0.5+, Flow = 0.7+, Edge Anchor = 0.5-0.7
+2. **For stable breathing**: Chaos = 0.2, Flow = 0.3, Edge Anchor = 0.8+
+3. **For edge-locked chaos**: Chaos = 0.8, Flow = 0.9, Edge Anchor = 0.9
+4. **High-contrast images work best** - more defined edges = better anchoring
+5. **Experiment with Edge Detail** - simplify or complexify the structure
 
 ## Browser Compatibility
 
-Requires WebGL support. Tested on:
+Requires WebGL 1.0. Tested on:
 - Chrome/Edge (recommended)
 - Firefox
 - Safari
 
 ## Credits
 
-Based on the SmoothLife paper by Stephan Rafler:
-- Paper: https://arxiv.org/abs/1111.1567
-- Inspired by: https://github.com/breadloafsky/fuzzy-life
+Based on:
+- **SmoothLife** by Stephan Rafler (https://arxiv.org/abs/1111.1567)
+- Inspired by fuzzy-life (https://github.com/breadloafsky/fuzzy-life)
 
 ## License
 
-MIT License - Feel free to use and modify!
+MIT - Use and modify freely!

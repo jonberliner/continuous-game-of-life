@@ -1,32 +1,42 @@
 /**
- * Core SmoothLife engine using WebGL for computation
+ * CLEAN REWRITE - Simple stable GoL engine
  */
 
-import { vertexShader, convolutionShader, transitionShader } from '../render/shaders.js';
+import { 
+    vertexShader,
+    displayShader,
+    edgeDetectionShader,
+    convolutionShader, 
+    transitionShader
+} from '../render/shaders.js';
 import { 
     createShader, 
     createProgram, 
     createTexture, 
     createFramebuffer,
     setupQuad,
+    setupQuadFlipped,
     bindQuadAttributes 
 } from '../render/webglUtils.js';
 
 export class SmoothLifeEngine {
     constructor(canvas, width, height, originalImageData) {
-        this.canvas = canvas;
         this.width = width;
         this.height = height;
         this.originalImageData = originalImageData;
+        this.frameCount = 0;
         
         this.gl = canvas.getContext('webgl', {
             preserveDrawingBuffer: true,
-            premultipliedAlpha: false
+            premultipliedAlpha: false,
+            alpha: false
         });
         
         if (!this.gl) {
             throw new Error('WebGL not supported');
         }
+        
+        this.gl.disable(this.gl.BLEND);
         
         this.initWebGL();
         this.reset();
@@ -35,119 +45,130 @@ export class SmoothLifeEngine {
     initWebGL() {
         const gl = this.gl;
         
-        // Compile shaders and create programs
+        // Compile shaders
         const vs = createShader(gl, gl.VERTEX_SHADER, vertexShader);
+        const displayFs = createShader(gl, gl.FRAGMENT_SHADER, displayShader);
+        const edgeFs = createShader(gl, gl.FRAGMENT_SHADER, edgeDetectionShader);
         const convFs = createShader(gl, gl.FRAGMENT_SHADER, convolutionShader);
         const transFs = createShader(gl, gl.FRAGMENT_SHADER, transitionShader);
         
+        this.displayProgram = createProgram(gl, vs, displayFs);
+        this.edgeProgram = createProgram(gl, vs, edgeFs);
         this.convolutionProgram = createProgram(gl, vs, convFs);
         this.transitionProgram = createProgram(gl, vs, transFs);
         
-        // Setup geometry for both programs
+        // Setup geometry
+        this.displayQuad = setupQuadFlipped(gl, this.displayProgram);
+        this.edgeQuad = setupQuad(gl, this.edgeProgram);
         this.convQuad = setupQuad(gl, this.convolutionProgram);
         this.transQuad = setupQuad(gl, this.transitionProgram);
         
-        // Get uniform locations for convolution program
-        this.convUniforms = {
-            texture: gl.getUniformLocation(this.convolutionProgram, 'u_texture'),
-            resolution: gl.getUniformLocation(this.convolutionProgram, 'u_resolution'),
-            innerRadius: gl.getUniformLocation(this.convolutionProgram, 'u_innerRadius'),
-            outerRadius: gl.getUniformLocation(this.convolutionProgram, 'u_outerRadius')
-        };
-        
-        // Get uniform locations for transition program
-        this.transUniforms = {
-            currentState: gl.getUniformLocation(this.transitionProgram, 'u_currentState'),
-            convolution: gl.getUniformLocation(this.transitionProgram, 'u_convolution'),
-            originalImage: gl.getUniformLocation(this.transitionProgram, 'u_originalImage'),
-            resolution: gl.getUniformLocation(this.transitionProgram, 'u_resolution'),
-            birth1: gl.getUniformLocation(this.transitionProgram, 'u_birth1'),
-            birth2: gl.getUniformLocation(this.transitionProgram, 'u_birth2'),
-            death1: gl.getUniformLocation(this.transitionProgram, 'u_death1'),
-            death2: gl.getUniformLocation(this.transitionProgram, 'u_death2'),
-            alphaM: gl.getUniformLocation(this.transitionProgram, 'u_alphaM'),
-            alphaN: gl.getUniformLocation(this.transitionProgram, 'u_alphaN'),
-            deltaTime: gl.getUniformLocation(this.transitionProgram, 'u_deltaTime'),
-            restoration: gl.getUniformLocation(this.transitionProgram, 'u_restoration'),
-            mixToOriginal: gl.getUniformLocation(this.transitionProgram, 'u_mixToOriginal')
-        };
-        
         // Create textures
         this.originalTexture = createTexture(gl, this.width, this.height, this.originalImageData);
+        this.edgeTexture = createTexture(gl, this.width, this.height);
         this.stateTexture0 = createTexture(gl, this.width, this.height, this.originalImageData);
         this.stateTexture1 = createTexture(gl, this.width, this.height);
         this.convolutionTexture = createTexture(gl, this.width, this.height);
         
         // Create framebuffers
+        this.edgeFramebuffer = createFramebuffer(gl, this.edgeTexture);
         this.convolutionFramebuffer = createFramebuffer(gl, this.convolutionTexture);
         this.stateFramebuffer0 = createFramebuffer(gl, this.stateTexture0);
         this.stateFramebuffer1 = createFramebuffer(gl, this.stateTexture1);
         
-        // Ping-pong state
         this.currentStateIndex = 0;
         
         gl.viewport(0, 0, this.width, this.height);
+        
+        // Pre-compute edges
+        this.computeEdges(0.3);
+    }
+    
+    computeEdges(sensitivity) {
+        const gl = this.gl;
+        
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.edgeFramebuffer);
+        gl.useProgram(this.edgeProgram);
+        
+        gl.uniform2f(gl.getUniformLocation(this.edgeProgram, 'u_resolution'), this.width, this.height);
+        gl.uniform1f(gl.getUniformLocation(this.edgeProgram, 'u_edgeSensitivity'), sensitivity);
+        
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.originalTexture);
+        gl.uniform1i(gl.getUniformLocation(this.edgeProgram, 'u_texture'), 0);
+        
+        bindQuadAttributes(gl, this.edgeQuad);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
     
     reset() {
         const gl = this.gl;
         
-        // Copy original image to current state
+        // Reset state to original
         gl.bindTexture(gl.TEXTURE_2D, this.stateTexture0);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.originalImageData);
         
         this.currentStateIndex = 0;
+        this.frameCount = 0;
     }
     
     step(params) {
         const gl = this.gl;
+        this.frameCount++;
         
         const currentTexture = this.currentStateIndex === 0 ? this.stateTexture0 : this.stateTexture1;
-        const currentFramebuffer = this.currentStateIndex === 0 ? this.stateFramebuffer0 : this.stateFramebuffer1;
         const nextTexture = this.currentStateIndex === 0 ? this.stateTexture1 : this.stateTexture0;
         const nextFramebuffer = this.currentStateIndex === 0 ? this.stateFramebuffer1 : this.stateFramebuffer0;
         
-        // PASS 1: Convolution (compute inner and outer averages)
+        // Recompute edges if sensitivity changed
+        if (params.edgeSensitivity !== undefined) {
+            this.computeEdges(params.edgeSensitivity);
+        }
+        
+        // PASS 1: Convolution
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.convolutionFramebuffer);
         gl.useProgram(this.convolutionProgram);
         
-        gl.uniform2f(this.convUniforms.resolution, this.width, this.height);
-        gl.uniform1f(this.convUniforms.innerRadius, params.innerRadius);
-        gl.uniform1f(this.convUniforms.outerRadius, params.outerRadius);
+        // Convert radius percentage to pixels
+        const avgDimension = (this.width + this.height) / 2;
+        const radiusPixels = params.radius * avgDimension;
+        
+        gl.uniform2f(gl.getUniformLocation(this.convolutionProgram, 'u_resolution'), this.width, this.height);
+        gl.uniform1f(gl.getUniformLocation(this.convolutionProgram, 'u_radius'), radiusPixels);
         
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, currentTexture);
-        gl.uniform1i(this.convUniforms.texture, 0);
+        gl.uniform1i(gl.getUniformLocation(this.convolutionProgram, 'u_texture'), 0);
         
         bindQuadAttributes(gl, this.convQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         
-        // PASS 2: Transition (apply SmoothLife rules)
+        // PASS 2: Transition
         gl.bindFramebuffer(gl.FRAMEBUFFER, nextFramebuffer);
         gl.useProgram(this.transitionProgram);
         
-        gl.uniform2f(this.transUniforms.resolution, this.width, this.height);
-        gl.uniform1f(this.transUniforms.birth1, params.birth1);
-        gl.uniform1f(this.transUniforms.birth2, params.birth2);
-        gl.uniform1f(this.transUniforms.death1, params.death1);
-        gl.uniform1f(this.transUniforms.death2, params.death2);
-        gl.uniform1f(this.transUniforms.alphaM, params.alphaM);
-        gl.uniform1f(this.transUniforms.alphaN, params.alphaM); // Using same alpha for both
-        gl.uniform1f(this.transUniforms.deltaTime, params.deltaTime);
-        gl.uniform1f(this.transUniforms.restoration, params.restoration);
-        gl.uniform1f(this.transUniforms.mixToOriginal, params.mixToOriginal);
+        gl.uniform2f(gl.getUniformLocation(this.transitionProgram, 'u_resolution'), this.width, this.height);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_time'), this.frameCount * 0.1);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_chaos'), params.chaos);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_randomNoise'), params.randomNoise);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_imageRestore'), params.imageRestore);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_deltaTime'), params.deltaTime);
         
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, currentTexture);
-        gl.uniform1i(this.transUniforms.currentState, 0);
+        gl.uniform1i(gl.getUniformLocation(this.transitionProgram, 'u_currentState'), 0);
         
         gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(gl.TEXTURE_2D, this.convolutionTexture);
-        gl.uniform1i(this.transUniforms.convolution, 1);
+        gl.uniform1i(gl.getUniformLocation(this.transitionProgram, 'u_convolution'), 1);
         
         gl.activeTexture(gl.TEXTURE2);
         gl.bindTexture(gl.TEXTURE_2D, this.originalTexture);
-        gl.uniform1i(this.transUniforms.originalImage, 2);
+        gl.uniform1i(gl.getUniformLocation(this.transitionProgram, 'u_originalImage'), 2);
+        
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, this.edgeTexture);
+        gl.uniform1i(gl.getUniformLocation(this.transitionProgram, 'u_edgeTexture'), 3);
         
         bindQuadAttributes(gl, this.transQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -162,37 +183,36 @@ export class SmoothLifeEngine {
         
         // Render to canvas
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.useProgram(this.transitionProgram);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        gl.useProgram(this.displayProgram);
         
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, currentTexture);
+        gl.uniform1i(gl.getUniformLocation(this.displayProgram, 'u_texture'), 0);
         
-        bindQuadAttributes(gl, this.transQuad);
+        bindQuadAttributes(gl, this.displayQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
-    }
-    
-    getCurrentState() {
-        return this.currentStateIndex === 0 ? this.stateTexture0 : this.stateTexture1;
     }
     
     destroy() {
         const gl = this.gl;
         
+        gl.deleteProgram(this.displayProgram);
+        gl.deleteProgram(this.edgeProgram);
         gl.deleteProgram(this.convolutionProgram);
         gl.deleteProgram(this.transitionProgram);
         
         gl.deleteTexture(this.originalTexture);
+        gl.deleteTexture(this.edgeTexture);
         gl.deleteTexture(this.stateTexture0);
         gl.deleteTexture(this.stateTexture1);
         gl.deleteTexture(this.convolutionTexture);
         
+        gl.deleteFramebuffer(this.edgeFramebuffer);
         gl.deleteFramebuffer(this.convolutionFramebuffer);
         gl.deleteFramebuffer(this.stateFramebuffer0);
         gl.deleteFramebuffer(this.stateFramebuffer1);
-        
-        gl.deleteBuffer(this.convQuad.positionBuffer);
-        gl.deleteBuffer(this.convQuad.texCoordBuffer);
-        gl.deleteBuffer(this.transQuad.positionBuffer);
-        gl.deleteBuffer(this.transQuad.texCoordBuffer);
     }
 }
