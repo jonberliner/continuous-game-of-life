@@ -228,6 +228,7 @@ export class SmoothLifeEngine {
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_edgePump'), params.edgePump ?? 0.2);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_imagePump'), params.imagePump ?? 0.08);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_structuredNoise'), params.structuredNoise ?? params.randomNoise ?? 0.0);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_mutation'), params.mutation ?? 0.15);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_deltaTime'), params.deltaTime);
         
         gl.activeTexture(gl.TEXTURE0);

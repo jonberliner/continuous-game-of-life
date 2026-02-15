@@ -72,6 +72,11 @@
                             <input type="range" id="noisePersistence" min="0" max="1" value="0.82" step="0.01">
                         </label>
                         <small class="hint">Low = constantly refreshing texture, High = stable evolving texture</small>
+                        <label title="How often pockets undergo rare color-species shifts">
+                            Mutation: <span id="mutationValue">0.16</span>
+                            <input type="range" id="mutation" min="0" max="1" value="0.16" step="0.01">
+                        </label>
+                        <small class="hint">Low = gentle palette drift, High = occasional dramatic pocket color transformations</small>
                         <label title="How strongly original image colors are pumped back globally">
                             Image Pump: <span id="imagePumpValue">0.06</span>
                             <input type="range" id="imagePump" min="0" max="1" value="0.06" step="0.01">

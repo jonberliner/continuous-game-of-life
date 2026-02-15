@@ -11,6 +11,7 @@ export class ControlsManager {
             structuredNoise: 0.10,   // Pocket-structured texture amount
             noiseScale: 0.72,        // Fine to coarse noise features
             noisePersistence: 0.82,  // Identity persistence of pocket texture
+            mutation: 0.16,          // Rare pocket palette mutations
             imagePump: 0.06,         // Global source pumping
             edgeDetail: 0.60,        // Fine vs coarse edge map
             edgePump: 0.18,          // Edge re-injection strength
@@ -70,6 +71,7 @@ export class ControlsManager {
         setupSlider('structuredNoise', 'structuredNoise');
         setupSlider('noiseScale', 'noiseScale');
         setupSlider('noisePersistence', 'noisePersistence');
+        setupSlider('mutation', 'mutation');
         setupSlider('imagePump', 'imagePump');
         setupSlider('edgeDetail', 'edgeDetail');
         setupSlider('edgePump', 'edgePump');

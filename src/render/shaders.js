@@ -218,6 +218,7 @@ uniform float u_randomNoise;     // 0-1: Random color variation
 uniform float u_edgePump;        // 0-1: How strongly edges re-inject original color
 uniform float u_imagePump;       // 0-1: Global source-color pumping
 uniform float u_structuredNoise; // 0-1: Structured pocket noise amount
+uniform float u_mutation;        // 0-1: Rare pocket color mutation strength
 uniform float u_deltaTime;
 uniform sampler2D u_structuredNoiseTexture;
 
@@ -229,6 +230,21 @@ float getLuminance(vec4 color) {
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+vec3 rgb2hsv(vec3 c) {
+    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+    float d = q.x - min(q.w, q.y);
+    float e = 1.0e-10;
+    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+vec3 hsv2rgb(vec3 c) {
+    vec3 p = abs(fract(c.xxx + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+    vec3 rgb = clamp(p - 1.0, 0.0, 1.0);
+    return c.z * mix(vec3(1.0), rgb, c.y);
 }
 
 float lifeTarget(float current, float neighborhood, float phase, float chaosJitter) {
@@ -277,20 +293,39 @@ void main() {
     newLum += (hash(v_texCoord * 350.0 + u_time * 0.7) - 0.5) * (0.002 + 0.05 * u_chaos) * u_deltaTime;
     newLum = clamp(newLum, 0.0, 1.0);
 
-    // Keep local chroma while moving luminance via GoL target.
-    vec3 chroma = current.rgb - vec3(localLum);
-    vec3 evolvedRgb = vec3(newLum) + chroma * mix(0.95, 0.75, edge);
-    vec4 evolvedColor = vec4(clamp(evolvedRgb, 0.0, 1.0), 1.0);
-    
-    // Large-scale color coupling: pull toward neighborhood color (from convolution pass).
+    // GoL-coupled color evolution (HSV): hue/sat evolve from neighborhood life dynamics.
     vec3 neighborhoodColor = vec3(conv.g, conv.b, conv.a);
-    float colorFlow = clamp((0.10 + 0.70 * u_activity + 0.20 * u_chaos) * u_deltaTime, 0.0, 1.0);
-    vec3 colorEvolved = mix(evolvedColor.rgb, neighborhoodColor, colorFlow * 0.55);
+    vec3 hsvCur = rgb2hsv(clamp(current.rgb, 0.0, 1.0));
+    vec3 hsvNbr = rgb2hsv(clamp(neighborhoodColor, 0.0, 1.0));
+    float activitySignal = clamp(abs(targetLum - localLum) * 2.2 + abs(neighLum - localLum) * 1.2, 0.0, 1.0);
+    float hueDiff = fract(hsvNbr.x - hsvCur.x + 0.5) - 0.5; // shortest circular direction
+    float hueRate = clamp((0.02 + 0.55 * u_activity) * u_deltaTime * (0.35 + 0.95 * activitySignal), 0.0, 1.0);
+    float satRate = clamp((0.03 + 0.45 * u_activity) * u_deltaTime * (0.25 + 0.90 * activitySignal), 0.0, 1.0);
+
+    float hueJitter = (hash(v_texCoord * 520.0 + u_time * 0.41) - 0.5) * 0.06 * u_chaos * u_deltaTime;
+    float satTarget = mix(hsvCur.y, hsvNbr.y, 0.55 + 0.35 * activitySignal);
+    float hueNext = fract(hsvCur.x + hueDiff * hueRate + hueJitter);
+    float satNext = clamp(mix(hsvCur.y, satTarget, satRate), 0.05, 1.0);
+
+    // Mutation: rare, activity-gated hue/sat shifts that stay pocket-local.
+    float mutationChance = clamp(u_mutation * (0.04 + 0.40 * activitySignal) * u_deltaTime, 0.0, 0.25);
+    float mutationRoll = hash(v_texCoord * 830.0 + u_time * 0.29);
+    if (mutationRoll < mutationChance) {
+        float hueJump = (hash(v_texCoord * 911.0 + u_time * 0.17) - 0.5) * (0.10 + 0.55 * u_mutation);
+        hueNext = fract(hueNext + hueJump);
+        satNext = clamp(satNext + (0.06 + 0.45 * u_mutation), 0.0, 1.0);
+    }
 
     // Structured noise acts as a subtle perturbation, not a dominant replacement.
     vec3 structured = texture2D(u_structuredNoiseTexture, v_texCoord).rgb;
-    vec3 structuredPerturb = (structured - 0.5) * (0.05 + 0.28 * u_structuredNoise) * (1.0 - edge * 0.6);
-    vec4 newColor = vec4(clamp(colorEvolved + structuredPerturb, 0.0, 1.0), 1.0);
+    float noiseHue = (structured.r - 0.5) * (0.02 + 0.16 * u_structuredNoise) * (1.0 - edge * 0.6);
+    float noiseSat = (structured.g - 0.5) * (0.03 + 0.20 * u_structuredNoise) * (1.0 - edge * 0.5);
+    float noiseVal = (structured.b - 0.5) * (0.01 + 0.10 * u_structuredNoise) * (1.0 - edge * 0.7);
+    hueNext = fract(hueNext + noiseHue);
+    satNext = clamp(satNext + noiseSat, 0.0, 1.0);
+    float valNext = clamp(newLum + noiseVal, 0.0, 1.0);
+    vec3 rgbLife = hsv2rgb(vec3(hueNext, satNext, valNext));
+    vec4 newColor = vec4(clamp(rgbLife, 0.0, 1.0), 1.0);
     
     // Pumping: local edge pump + global image pump.
     float edgePump = clamp(u_edgePump * barrier * u_deltaTime * 2.2, 0.0, 1.0);
