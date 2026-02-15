@@ -6,12 +6,15 @@ export class ControlsManager {
     constructor(onParamChange, onImageUpload, onPause, onReset, onModeSwitch) {
         this.params = {
             // CLEAN SIMPLE PARAMETERS
-            energy: 0.58,            // Combined motion + disorder
-            radius: 0.045,           // 4.5% - single radius
-            randomNoise: 0.02,       // Color noise
-            imagePump: 0.08,         // Global source pumping
+            energy: 0.64,            // Combined motion + disorder
+            radius: 0.10,            // 10% - larger evolving structures
+            structuredNoise: 0.10,   // Pocket-structured texture amount
+            noiseScale: 0.72,        // Fine to coarse noise features
+            noisePersistence: 0.82,  // Identity persistence of pocket texture
+            imagePump: 0.06,         // Global source pumping
             edgeDetail: 0.60,        // Fine vs coarse edge map
-            edgePump: 0.22,          // Edge re-injection strength
+            edgePump: 0.18,          // Edge re-injection strength
+            edgeConfinement: 0.88,   // Noise leakage across edges
             deltaTime: 0.32          // Speed
         };
         
@@ -64,10 +67,13 @@ export class ControlsManager {
         // Setup all sliders
         setupSlider('energy', 'energy');
         setupSlider('radius', 'radius', true);  // Display as percentage
-        setupSlider('randomNoise', 'randomNoise');
+        setupSlider('structuredNoise', 'structuredNoise');
+        setupSlider('noiseScale', 'noiseScale');
+        setupSlider('noisePersistence', 'noisePersistence');
         setupSlider('imagePump', 'imagePump');
         setupSlider('edgeDetail', 'edgeDetail');
         setupSlider('edgePump', 'edgePump');
+        setupSlider('edgeConfinement', 'edgeConfinement');
         setupSlider('deltaTime', 'deltaTime');
         
         // Mode switcher
@@ -143,6 +149,7 @@ export class ControlsManager {
             ...this.params,
             activity,
             chaos,
+            randomNoise: this.params.structuredNoise,
             imageRestore: this.params.imagePump,
             edgeSensitivity: this.params.edgeDetail
         };

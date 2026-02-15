@@ -7,7 +7,8 @@ import {
     displayShader,
     edgeDetectionShader,
     convolutionShader, 
-    transitionShader
+    transitionShader,
+    structuredNoiseUpdateShader
 } from '../render/shaders.js';
 import { 
     createShader, 
@@ -72,17 +73,20 @@ export class SmoothLifeEngine {
         const edgeFs = createShader(gl, gl.FRAGMENT_SHADER, edgeDetectionShader);
         const convFs = createShader(gl, gl.FRAGMENT_SHADER, convolutionShader);
         const transFs = createShader(gl, gl.FRAGMENT_SHADER, transitionShader);
+        const noiseFs = createShader(gl, gl.FRAGMENT_SHADER, structuredNoiseUpdateShader);
         
         this.displayProgram = createProgram(gl, vs, displayFs);
         this.edgeProgram = createProgram(gl, vs, edgeFs);
         this.convolutionProgram = createProgram(gl, vs, convFs);
         this.transitionProgram = createProgram(gl, vs, transFs);
+        this.noiseProgram = createProgram(gl, vs, noiseFs);
         
         // Setup geometry
         this.displayQuad = setupQuadFlipped(gl, this.displayProgram);
         this.edgeQuad = setupQuad(gl, this.edgeProgram);
         this.convQuad = setupQuad(gl, this.convolutionProgram);
         this.transQuad = setupQuad(gl, this.transitionProgram);
+        this.noiseQuad = setupQuad(gl, this.noiseProgram);
         
         // Create textures
         this.originalTexture = createTexture(gl, this.width, this.height, this.originalImageData);
@@ -90,19 +94,25 @@ export class SmoothLifeEngine {
         this.stateTexture0 = createTexture(gl, this.width, this.height, this.originalImageData);
         this.stateTexture1 = createTexture(gl, this.width, this.height);
         this.convolutionTexture = createTexture(gl, this.width, this.height);
+        this.noiseTexture0 = createTexture(gl, this.width, this.height);
+        this.noiseTexture1 = createTexture(gl, this.width, this.height);
         
         // Create framebuffers
         this.edgeFramebuffer = createFramebuffer(gl, this.edgeTexture);
         this.convolutionFramebuffer = createFramebuffer(gl, this.convolutionTexture);
         this.stateFramebuffer0 = createFramebuffer(gl, this.stateTexture0);
         this.stateFramebuffer1 = createFramebuffer(gl, this.stateTexture1);
+        this.noiseFramebuffer0 = createFramebuffer(gl, this.noiseTexture0);
+        this.noiseFramebuffer1 = createFramebuffer(gl, this.noiseTexture1);
         
         this.currentStateIndex = 0;
+        this.currentNoiseIndex = 0;
         
         gl.viewport(0, 0, this.width, this.height);
         
         // Pre-compute edges
         this.computeEdges(0.6);
+        this.seedNoiseTextures();
     }
     
     computeEdges(detail) {
@@ -130,7 +140,25 @@ export class SmoothLifeEngine {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.originalImageData);
         
         this.currentStateIndex = 0;
+        this.currentNoiseIndex = 0;
         this.frameCount = 0;
+        this.seedNoiseTextures();
+    }
+
+    seedNoiseTextures() {
+        const gl = this.gl;
+        const size = this.width * this.height * 4;
+        const data = new Uint8Array(size);
+        for (let i = 0; i < size; i += 4) {
+            data[i] = Math.floor(Math.random() * 256);
+            data[i + 1] = Math.floor(Math.random() * 256);
+            data[i + 2] = Math.floor(Math.random() * 256);
+            data[i + 3] = 255;
+        }
+        gl.bindTexture(gl.TEXTURE_2D, this.noiseTexture0);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+        gl.bindTexture(gl.TEXTURE_2D, this.noiseTexture1);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
     }
     
     step(params) {
@@ -138,8 +166,9 @@ export class SmoothLifeEngine {
         this.frameCount++;
         
         const currentTexture = this.currentStateIndex === 0 ? this.stateTexture0 : this.stateTexture1;
-        const nextTexture = this.currentStateIndex === 0 ? this.stateTexture1 : this.stateTexture0;
         const nextFramebuffer = this.currentStateIndex === 0 ? this.stateFramebuffer1 : this.stateFramebuffer0;
+        const currentNoiseTexture = this.currentNoiseIndex === 0 ? this.noiseTexture0 : this.noiseTexture1;
+        const nextNoiseFramebuffer = this.currentNoiseIndex === 0 ? this.noiseFramebuffer1 : this.noiseFramebuffer0;
         
         // Recompute edges if controls are present
         if (params.edgeDetail !== undefined) {
@@ -166,6 +195,26 @@ export class SmoothLifeEngine {
         
         bindQuadAttributes(gl, this.convQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        // PASS 1.5: Structured noise evolution (edge-aware)
+        gl.bindFramebuffer(gl.FRAMEBUFFER, nextNoiseFramebuffer);
+        gl.useProgram(this.noiseProgram);
+        gl.uniform2f(gl.getUniformLocation(this.noiseProgram, 'u_resolution'), this.width, this.height);
+        gl.uniform1f(gl.getUniformLocation(this.noiseProgram, 'u_time'), this.frameCount * 0.1);
+        gl.uniform1f(gl.getUniformLocation(this.noiseProgram, 'u_deltaTime'), params.deltaTime);
+        gl.uniform1f(gl.getUniformLocation(this.noiseProgram, 'u_noiseScale'), params.noiseScale ?? 0.45);
+        gl.uniform1f(gl.getUniformLocation(this.noiseProgram, 'u_noisePersistence'), params.noisePersistence ?? 0.65);
+        gl.uniform1f(gl.getUniformLocation(this.noiseProgram, 'u_edgeConfinement'), params.edgeConfinement ?? 0.8);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, currentNoiseTexture);
+        gl.uniform1i(gl.getUniformLocation(this.noiseProgram, 'u_prevNoise'), 0);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.edgeTexture);
+        gl.uniform1i(gl.getUniformLocation(this.noiseProgram, 'u_edgeTexture'), 1);
+
+        bindQuadAttributes(gl, this.noiseQuad);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
         
         // PASS 2: Transition
         gl.bindFramebuffer(gl.FRAMEBUFFER, nextFramebuffer);
@@ -178,6 +227,7 @@ export class SmoothLifeEngine {
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_randomNoise'), params.randomNoise);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_edgePump'), params.edgePump ?? 0.2);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_imagePump'), params.imagePump ?? 0.08);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_structuredNoise'), params.structuredNoise ?? params.randomNoise ?? 0.0);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_deltaTime'), params.deltaTime);
         
         gl.activeTexture(gl.TEXTURE0);
@@ -195,12 +245,16 @@ export class SmoothLifeEngine {
         gl.activeTexture(gl.TEXTURE3);
         gl.bindTexture(gl.TEXTURE_2D, this.edgeTexture);
         gl.uniform1i(gl.getUniformLocation(this.transitionProgram, 'u_edgeTexture'), 3);
+        gl.activeTexture(gl.TEXTURE4);
+        gl.bindTexture(gl.TEXTURE_2D, currentNoiseTexture);
+        gl.uniform1i(gl.getUniformLocation(this.transitionProgram, 'u_structuredNoiseTexture'), 4);
         
         bindQuadAttributes(gl, this.transQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         
         // Swap buffers
         this.currentStateIndex = 1 - this.currentStateIndex;
+        this.currentNoiseIndex = 1 - this.currentNoiseIndex;
     }
     
     render() {
@@ -229,16 +283,21 @@ export class SmoothLifeEngine {
         gl.deleteProgram(this.edgeProgram);
         gl.deleteProgram(this.convolutionProgram);
         gl.deleteProgram(this.transitionProgram);
+        gl.deleteProgram(this.noiseProgram);
         
         gl.deleteTexture(this.originalTexture);
         gl.deleteTexture(this.edgeTexture);
         gl.deleteTexture(this.stateTexture0);
         gl.deleteTexture(this.stateTexture1);
         gl.deleteTexture(this.convolutionTexture);
+        gl.deleteTexture(this.noiseTexture0);
+        gl.deleteTexture(this.noiseTexture1);
         
         gl.deleteFramebuffer(this.edgeFramebuffer);
         gl.deleteFramebuffer(this.convolutionFramebuffer);
         gl.deleteFramebuffer(this.stateFramebuffer0);
         gl.deleteFramebuffer(this.stateFramebuffer1);
+        gl.deleteFramebuffer(this.noiseFramebuffer0);
+        gl.deleteFramebuffer(this.noiseFramebuffer1);
     }
 }

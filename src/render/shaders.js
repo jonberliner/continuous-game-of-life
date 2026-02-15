@@ -25,6 +25,77 @@ void main() {
 }
 `;
 
+// Structured noise update shader - evolves a coherent noise field inside edge pockets
+export const structuredNoiseUpdateShader = `
+precision highp float;
+
+uniform sampler2D u_prevNoise;
+uniform sampler2D u_edgeTexture;
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform float u_deltaTime;
+uniform float u_noiseScale;
+uniform float u_noisePersistence;
+uniform float u_edgeConfinement;
+
+varying vec2 v_texCoord;
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+void main() {
+    vec2 px = 1.0 / u_resolution;
+    vec3 center = texture2D(u_prevNoise, v_texCoord).rgb;
+    float centerEdge = texture2D(u_edgeTexture, v_texCoord).r;
+
+    // Scale controls the spatial character of the injected structure.
+    float radiusPx = mix(1.0, 90.0, u_noiseScale);
+    float radiusUv = radiusPx * min(px.x, px.y);
+
+    // Sample coherent neighborhood with fixed cost.
+    const int SAMPLE_COUNT = 24;
+    const float GOLDEN_ANGLE = 2.39996323;
+    vec3 sum = vec3(0.0);
+    float wsum = 0.0;
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+        float fi = float(i);
+        float t = (fi + 0.5) / float(SAMPLE_COUNT);
+        float r = sqrt(t) * radiusUv;
+        float a = fi * GOLDEN_ANGLE;
+        vec2 dir = vec2(cos(a), sin(a));
+        vec2 uv = v_texCoord + dir * r;
+
+        vec3 n = texture2D(u_prevNoise, uv).rgb;
+        float e = texture2D(u_edgeTexture, uv).r;
+        float barrier = max(centerEdge, e);
+        float w = (1.0 - barrier * u_edgeConfinement) * (1.0 - 0.35 * t);
+        if (w <= 0.0001) continue;
+        sum += n * w;
+        wsum += w;
+    }
+    vec3 neighborhood = wsum > 0.0 ? sum / wsum : center;
+
+    // Coarse cell-seeded variation gives persistent pocket identity.
+    vec2 coarseCell = floor(v_texCoord * mix(12.0, 220.0, 1.0 - u_noiseScale));
+    vec3 seeded = vec3(
+        hash(coarseCell + vec2(17.0, 43.0) + u_time * 0.07),
+        hash(coarseCell + vec2(71.0, 11.0) + u_time * 0.09),
+        hash(coarseCell + vec2(29.0, 97.0) + u_time * 0.05)
+    );
+
+    float persist = clamp(u_noisePersistence, 0.0, 1.0);
+    float blendRate = clamp((1.0 - persist) * u_deltaTime * 2.2, 0.0, 1.0);
+    vec3 evolved = mix(neighborhood, seeded, blendRate);
+
+    // Extra damping near strong edges helps keep boundaries readable.
+    float edgeDamp = 1.0 - centerEdge * 0.35 * u_edgeConfinement;
+    vec3 nextNoise = mix(center, evolved * edgeDamp, clamp(u_deltaTime * 1.4, 0.0, 1.0));
+
+    gl_FragColor = vec4(clamp(nextNoise, 0.0, 1.0), 1.0);
+}
+`;
+
 // Edge detection shader - outputs SOFT edge strength (0..1)
 export const edgeDetectionShader = `
 precision highp float;
@@ -146,7 +217,9 @@ uniform float u_activity;        // 0-1: How fast evolution proceeds
 uniform float u_randomNoise;     // 0-1: Random color variation  
 uniform float u_edgePump;        // 0-1: How strongly edges re-inject original color
 uniform float u_imagePump;       // 0-1: Global source-color pumping
+uniform float u_structuredNoise; // 0-1: Structured pocket noise amount
 uniform float u_deltaTime;
+uniform sampler2D u_structuredNoiseTexture;
 
 varying vec2 v_texCoord;
 
@@ -209,16 +282,15 @@ void main() {
     vec3 evolvedRgb = vec3(newLum) + chroma * mix(0.95, 0.75, edge);
     vec4 evolvedColor = vec4(clamp(evolvedRgb, 0.0, 1.0), 1.0);
     
-    // Generate pure random color
-    vec4 randomColor = vec4(
-        hash(v_texCoord * 200.0 + u_time * 0.3),
-        hash(v_texCoord * 300.0 + u_time * 0.4),
-        hash(v_texCoord * 400.0 + u_time * 0.5),
-        1.0
-    );
-    
-    // Mix: 0 = pure evolved, 1 = pure random
-    vec4 newColor = mix(evolvedColor, randomColor, clamp(u_randomNoise * u_deltaTime * 2.0, 0.0, 1.0));
+    // Large-scale color coupling: pull toward neighborhood color (from convolution pass).
+    vec3 neighborhoodColor = vec3(conv.g, conv.b, conv.a);
+    float colorFlow = clamp((0.10 + 0.70 * u_activity + 0.20 * u_chaos) * u_deltaTime, 0.0, 1.0);
+    vec3 colorEvolved = mix(evolvedColor.rgb, neighborhoodColor, colorFlow * 0.55);
+
+    // Structured noise acts as a subtle perturbation, not a dominant replacement.
+    vec3 structured = texture2D(u_structuredNoiseTexture, v_texCoord).rgb;
+    vec3 structuredPerturb = (structured - 0.5) * (0.05 + 0.28 * u_structuredNoise) * (1.0 - edge * 0.6);
+    vec4 newColor = vec4(clamp(colorEvolved + structuredPerturb, 0.0, 1.0), 1.0);
     
     // Pumping: local edge pump + global image pump.
     float edgePump = clamp(u_edgePump * barrier * u_deltaTime * 2.2, 0.0, 1.0);

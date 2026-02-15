@@ -40,8 +40,8 @@
                     <div class="control-section">
                         <h3>Game of Life Evolution</h3>
                         <label title="Combined motion + unpredictability of evolution">
-                            Evolution Energy: <span id="energyValue">0.58</span>
-                            <input type="range" id="energy" min="0" max="1" value="0.58" step="0.01">
+                            Evolution Energy: <span id="energyValue">0.64</span>
+                            <input type="range" id="energy" min="0" max="1" value="0.64" step="0.01">
                         </label>
                         <small class="hint">Low = slow/stable motifs, Mid = flowing pocket evolution, High = fast/chaotic evolution</small>
                     </div>
@@ -49,22 +49,32 @@
                     <div class="control-section">
                         <h3>Pattern Scale</h3>
                         <label title="Neighborhood size for GoL">
-                            Radius: <span id="radiusValue">4.0%</span>
-                            <input type="range" id="radius" min="0.001" max="1" value="0.04" step="0.001">
+                            Radius: <span id="radiusValue">10.0%</span>
+                            <input type="range" id="radius" min="0.001" max="1" value="0.10" step="0.001">
                         </label>
                         <small class="hint">0-100% of image scale. Small = local pockets, Large = broad/global coupling</small>
                     </div>
 
                     <div class="control-section">
                         <h3>Color & Source Pump</h3>
-                        <label title="Amount of random color noise">
-                            Random Noise: <span id="randomNoiseValue">0.02</span>
-                            <input type="range" id="randomNoise" min="0" max="1" value="0.02" step="0.01">
+                        <label title="How much structured texture is injected into each edge-bounded region">
+                            Structured Noise: <span id="structuredNoiseValue">0.10</span>
+                            <input type="range" id="structuredNoise" min="0" max="1" value="0.10" step="0.01">
                         </label>
-                        <small class="hint">Adds random color variation across all regions</small>
+                        <small class="hint">Low = cleaner regions, High = richer internal texture in each pocket</small>
+                        <label title="Size of noise structures inside each pocket">
+                            Noise Scale: <span id="noiseScaleValue">0.72</span>
+                            <input type="range" id="noiseScale" min="0" max="1" value="0.72" step="0.01">
+                        </label>
+                        <small class="hint">Low = fine grain, High = larger blobs/forms</small>
+                        <label title="How long each pocket keeps its internal texture identity">
+                            Noise Persistence: <span id="noisePersistenceValue">0.82</span>
+                            <input type="range" id="noisePersistence" min="0" max="1" value="0.82" step="0.01">
+                        </label>
+                        <small class="hint">Low = constantly refreshing texture, High = stable evolving texture</small>
                         <label title="How strongly original image colors are pumped back globally">
-                            Image Pump: <span id="imagePumpValue">0.08</span>
-                            <input type="range" id="imagePump" min="0" max="1" value="0.08" step="0.01">
+                            Image Pump: <span id="imagePumpValue">0.06</span>
+                            <input type="range" id="imagePump" min="0" max="1" value="0.06" step="0.01">
                         </label>
                         <small class="hint">Low = freer drift, High = stronger pull back toward original image</small>
                     </div>
@@ -77,10 +87,15 @@
                         </label>
                         <small class="hint">Low = coarse boundaries, High = fine boundaries</small>
                         <label title="How strongly edge regions pull back toward original colors">
-                            Edge Pump: <span id="edgePumpValue">0.22</span>
-                            <input type="range" id="edgePump" min="0" max="1" value="0.22" step="0.01">
+                            Edge Pump: <span id="edgePumpValue">0.18</span>
+                            <input type="range" id="edgePump" min="0" max="1" value="0.18" step="0.01">
                         </label>
                         <small class="hint">Low = edges only block flow, High = edges actively re-imprint source colors</small>
+                        <label title="How much edges prevent pocket textures from bleeding into neighbors">
+                            Edge Confinement: <span id="edgeConfinementValue">0.88</span>
+                            <input type="range" id="edgeConfinement" min="0" max="1" value="0.88" step="0.01">
+                        </label>
+                        <small class="hint">Low = textures leak across boundaries, High = textures stay pocket-local</small>
                     </div>
 
                     <div class="control-section">

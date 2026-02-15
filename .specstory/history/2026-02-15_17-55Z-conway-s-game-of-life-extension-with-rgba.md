@@ -20769,3 +20769,315 @@ So: default single, advanced dual.
 
 ---
 
+_**User (2026-02-15 17:55Z)**_
+
+okay.  now I'd like to do something - instead of just global random noise, I'd like to have structured noise injected per place walled off by the edges.  does that make sense to you?  how would you do that?  what do you think?
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Proposing edge-aware texture blending**</details></think>
+
+---
+
+Yes, that makes perfect sense — and it’s a great idea.
+
+Global white noise fights the structure. What you want is **region-coherent noise**: each edge-bounded pocket gets its own evolving texture/impulse, with limited bleed across boundaries.
+
+## How I’d do it (best practical approach)
+
+Use an **edge-aware noise field** as a separate simulation pass:
+
+1. Keep a `noiseTexture` (ping-pong like state).
+2. Each frame:
+   - evolve noise with small local update
+   - but weight neighbors by edge barrier (same as your main kernel)
+   - inject a little seeded noise
+3. Feed that structured field into the transition shader instead of raw random hash.
+
+So noise becomes:
+- coherent inside a pocket,
+- different from neighboring pockets,
+- naturally constrained by edges.
+
+## Two concrete variants
+
+- **Region-coherent value noise (recommended first)**
+  - cheap, stable, easy to control
+  - gives “patch personality” without full segmentation
+
+- **Patch-stat injection (more advanced)**
+  - compute local mean/variance/palette per pocket-like area (edge-aware blur)
+  - inject toward those patch stats
+  - richer “forms” but more passes/complexity
+
+## Controls I’d expose
+
+- `Structured Noise` (amount)
+- `Noise Scale` (fine vs broad texture inside pockets)
+- `Noise Persistence` (how long a pocket keeps its identity)
+- `Edge Confinement` (how strongly edges block noise bleed)
+
+## My recommendation
+
+Start with **region-coherent edge-aware noise field** first.  
+It will immediately feel like “living pocket textures” instead of global static, and it fits your current GPU pipeline well.
+
+If you want, I can implement this next as a dedicated WebGL pass and replace current random noise with it.
+
+---
+
+_**User (2026-02-15 17:55Z)**_
+
+okay do it.  be sure the controls added are detailed so a non-technical user can understand what it is and what types of effects to expect
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Planning structured noise pass**</details></think>
+
+---
+
+Implementing this now in spatial mode as a dedicated **edge-aware structured-noise simulation pass** (GPU), then wiring artist-friendly controls (`Structured Noise`, `Noise Scale`, `Noise Persistence`, `Edge Confinement`) with plain-language tooltips.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Next I’m wiring the new noise pass into the spatial engine (textures, framebuffers, pass order, and uniforms).
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Now I’m updating the UI text/sliders to be non-technical and clearly describe expected visual effects for the new structured-noise controls.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Verifying removed ID references**</details></think>
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 4 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/render/shaders.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/core/smoothlife.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/controls.js`
+- `/Users/jsb/repos/continuous-game-of-life/index.html`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Verifying shader uniform updates**</details></think>
+
+---
+
+Implemented. Spatial mode now injects **structured, edge-bounded noise** instead of plain global random noise, and the controls are rewritten for non-technical users.
+
+### What changed
+
+- Added a new GPU pass in spatial mode: **edge-aware structured noise simulation**
+  - new shader: `structuredNoiseUpdateShader` in `src/render/shaders.js`
+  - evolves a persistent noise field per frame
+  - uses edge map to reduce bleed across boundaries
+
+- Wired noise pass into engine pipeline
+  - `src/core/smoothlife.js`
+  - added noise textures/framebuffers (ping-pong)
+  - pass order now: edge map → convolution → structured-noise update → transition
+  - seeded noise textures on init/reset
+
+- Transition now uses structured noise texture (not just hash noise)
+  - still supports source pumping and edge pumping
+
+- Replaced/expanded controls with plain-language labels
+  - `index.html`
+  - `src/ui/controls.js`
+
+### New user-facing controls (with intended effect)
+
+- `Structured Noise` — how much pocket texture gets injected
+- `Noise Scale` — fine grain ↔ large blobs/forms
+- `Noise Persistence` — flickery changing texture ↔ stable evolving texture
+- `Edge Confinement` — bleed across edges ↔ pocket-local texture
+- `Image Pump` — global pull back to source image
+- `Edge Detail` — coarse boundaries ↔ fine boundaries
+- `Edge Pump` — edge re-imprint strength
+
+### Good starting defaults (already set)
+
+- `Evolution Energy`: `0.58`
+- `Radius`: `4.5%`
+- `Structured Noise`: `0.24`
+- `Noise Scale`: `0.45`
+- `Noise Persistence`: `0.65`
+- `Edge Confinement`: `0.80`
+- `Image Pump`: `0.08`
+- `Edge Detail`: `0.60`
+- `Edge Pump`: `0.22`
+- `Time Step`: `0.32`
+
+If you want, next I can split the controls by mode (Spatial/Frequency) so frequency doesn’t inherit any spatial-noise semantics.
+
+---
+
+_**User (2026-02-15 17:55Z)**_
+
+I don't know.  this still seems to be dominated by seemingly random noise.  I want to see more colors and large scale patterns evolving.
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Planning improved color pattern blending**</details></think>
+
+---
+
+Makes sense — I’m going to shift the shader from “mix toward noise color” to “pattern-first with noise as subtle perturbation,” and increase large-scale color coupling from neighborhood averages so broad structures dominate. I’ll also retune defaults for bigger evolving forms.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+I’ve changed the core blend so noise can’t dominate color anymore; next I’m retuning the startup defaults toward larger-scale evolving patterns and lower noise.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 3 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/render/shaders.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/controls.js`
+- `/Users/jsb/repos/continuous-game-of-life/index.html`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Agreed — it was still too noise-forward. I rebalanced it toward **pattern/color evolution first**, with noise only as subtle texture.
+
+### What I changed
+
+- In `src/render/shaders.js`:
+  - removed dominant noise mixing (`mix(evolved, noise, amt)`)
+  - added **neighborhood color-flow coupling** (from convolution color channels) so larger-scale color structures evolve
+  - structured noise is now an **additive perturbation** (small signed offset), not a replacement color
+  - noise perturbation is reduced near edges
+
+- Retuned defaults for broader, richer motion:
+  - `Evolution Energy`: `0.64`
+  - `Radius`: `10%`
+  - `Structured Noise`: `0.10`
+  - `Noise Scale`: `0.72` (larger forms)
+  - `Noise Persistence`: `0.82`
+  - `Image Pump`: `0.06`
+  - `Edge Pump`: `0.18`
+  - `Edge Confinement`: `0.88`
+  - kept `Time Step`: `0.32`
+
+Updated files:
+- `src/render/shaders.js`
+- `src/ui/controls.js`
+- `index.html`
+
+### What you should now see
+- bigger regional color masses evolving over time
+- less “TV static” feel
+- structured texture inside pockets, but not dominating the image
+
+If it still feels too noisy, next quick tweak is lowering perturbation gain another ~30% and pushing color-flow gain up ~20%.
+
+---
+
+_**User (2026-02-15 17:55Z)**_
+
+yes, I'd like to see more color.  Maybe even colors that aren't coming from the source randomly populating a pocket.  we inject noise - is this per channel?  Like, an effect would be pockets changing their color somehow.  propose how you would do these things - don't code yet.  state the goal of this as well and the effect we'd hope to see over time
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+Goal: make each edge-bounded pocket feel like a living micro-ecosystem that can drift into new palettes over time, while still preserving edge-defined structure and GoL-like dynamics.
+
+What to add (conceptually):
+
+- **Per-pocket color seed field (HSV or Lab)**  
+  Instead of only RGB noise, maintain a slow-evolving “palette seed” texture.  
+  - yes, inject per channel, but better: separate hue/saturation/value behavior
+  - hue can drift independently; value/luma still tied more to GoL state
+
+- **Edge-aware pocket coherence**  
+  Palette seed is updated with edge-constrained diffusion (same confinement idea), so neighboring pockets can diverge in color identity.
+
+- **Rare color mutation events**  
+  At low probability (controlled slider), a pocket gets a hue jump or saturation bloom.  
+  This creates the “randomly populating a pocket with new color” effect without turning whole frame noisy.
+
+- **Two-layer color model**
+  1) **Structure layer**: GoL luminance + neighborhood evolution (what cell pattern is doing)  
+  2) **Palette layer**: slowly varying pocket color field (what color mood that structure takes)
+
+- **Blend by pocket state**
+  Apply palette shifts more in active/interior regions, less on hard edges (unless edge pump is high).
+
+Controls (artist-friendly):
+
+- `Pocket Palette Drift` — how quickly pocket color mood changes
+- `Color Mutation` — how often big hue shifts happen per pocket
+- `New Color Strength` — how far from source palette pockets can go
+- `Pocket Color Coherence` — how uniform each pocket’s color mood is internally
+- `Edge Color Lock` — how much edges resist off-source colors
+
+Expected effect over time:
+
+- short term: local pattern motion stays readable and edge-bounded
+- medium term: pockets start developing distinct color personalities
+- long term: some pockets periodically “flip” into surprising new palettes, then evolve away again
+- overall: trippy but structured, with visible local life and color evolution beyond source colors, not just noise overlay
+
+And yes: currently noise is effectively per-channel RGB, but it’s not semantically controlled. Moving to a palette-layer model is what will make this feel intentional instead of random static.
+
+---
+
