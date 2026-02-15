@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Continuous Game of Life - RGBA</title>
+    <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Continuous Game of Life</h1>
+            <p>SmoothLife for RGBA images</p>
+        </header>
+
+        <main>
+            <div class="canvas-container">
+                <canvas id="glCanvas"></canvas>
+            </div>
+
+            <div class="controls-container">
+                <div class="control-section">
+                    <h3>Image</h3>
+                    <input type="file" id="imageUpload" accept="image/*">
+                    <button id="pauseBtn">Pause</button>
+                    <button id="resetBtn">Reset</button>
+                </div>
+
+                <div class="control-section">
+                    <h3>Effect Strength</h3>
+                    <label title="Blend between original image (1.0) and full transformation (0.0)">
+                        Mix to Original: <span id="mixToOriginalValue">0.00</span>
+                        <input type="range" id="mixToOriginal" min="0" max="1" value="0" step="0.01">
+                    </label>
+                    <small class="hint">1.0 = original image, 0.0 = full effect</small>
+                </div>
+
+                <div class="control-section">
+                    <h3>Radii</h3>
+                    <label title="Size of the inner disk (the 'cell' itself). Larger = smoother local effects">
+                        Inner Radius: <span id="innerRadiusValue">3</span>
+                        <input type="range" id="innerRadius" min="1" max="30" value="3" step="0.5">
+                    </label>
+                    <label title="Size of the outer ring (the neighborhood). Larger = more global patterns">
+                        Outer Radius: <span id="outerRadiusValue">9</span>
+                        <input type="range" id="outerRadius" min="2" max="45" value="9" step="0.5">
+                    </label>
+                </div>
+
+                <div class="control-section">
+                    <h3>Birth Interval</h3>
+                    <label title="Cells with neighbor luminance above this will brighten">
+                        Birth Min: <span id="birth1Value">0.278</span>
+                        <input type="range" id="birth1" min="0" max="1" value="0.278" step="0.001">
+                    </label>
+                    <label title="Cells with neighbor luminance below this will brighten">
+                        Birth Max: <span id="birth2Value">0.365</span>
+                        <input type="range" id="birth2" min="0" max="1" value="0.365" step="0.001">
+                    </label>
+                    <small class="hint">Neighbor luminance in [min, max] → brighten</small>
+                </div>
+
+                <div class="control-section">
+                    <h3>Death Interval</h3>
+                    <label title="Cells with neighbor luminance above this will darken">
+                        Death Min: <span id="death1Value">0.267</span>
+                        <input type="range" id="death1" min="0" max="1" value="0.267" step="0.001">
+                    </label>
+                    <label title="Cells with neighbor luminance below this will darken">
+                        Death Max: <span id="death2Value">0.445</span>
+                        <input type="range" id="death2" min="0" max="1" value="0.445" step="0.001">
+                    </label>
+                    <small class="hint">Neighbor luminance in [min, max] → darken</small>
+                </div>
+
+                <div class="control-section">
+                    <h3>Dynamics</h3>
+                    <label title="Sharpness of transitions. Lower = sharper, higher = smoother">
+                        Smoothness: <span id="alphaMValue">0.147</span>
+                        <input type="range" id="alphaM" min="0.01" max="0.5" value="0.147" step="0.001">
+                    </label>
+                    <label title="Evolution speed per frame. Higher = faster changes">
+                        Time Step: <span id="deltaTimeValue">0.1</span>
+                        <input type="range" id="deltaTime" min="0.01" max="1.0" value="0.1" step="0.01">
+                    </label>
+                    <label title="How strongly the original image pulls back over time. Higher = more stable">
+                        Restoration: <span id="restorationValue">0.05</span>
+                        <input type="range" id="restoration" min="0" max="0.5" value="0.05" step="0.01">
+                    </label>
+                </div>
+
+                <div class="control-section">
+                    <h3>Presets</h3>
+                    <button class="preset-btn" data-preset="default">Default</button>
+                    <button class="preset-btn" data-preset="chaotic">Chaotic</button>
+                    <button class="preset-btn" data-preset="stable">Stable</button>
+                    <button class="preset-btn" data-preset="waves">Waves</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>

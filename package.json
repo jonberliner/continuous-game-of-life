@@ -1,0 +1,19 @@
+{
+  "name": "continuous-game-of-life",
+  "version": "1.0.0",
+  "description": "A WebGL-based implementation of SmoothLife for RGBA images",
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes serve -l 8080",
+    "start": "npx --yes serve -l 8080"
+  },
+  "keywords": [
+    "smoothlife",
+    "game-of-life",
+    "webgl",
+    "cellular-automata",
+    "generative-art"
+  ],
+  "author": "",
+  "license": "MIT"
+}
