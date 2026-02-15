@@ -20,32 +20,11 @@ import {
 } from '../render/webglUtils.js';
 
 export class SmoothLifeEngine {
-    constructor(canvas, width, height, originalImageData, recreateCanvas = false) {
+    constructor(canvas, width, height, originalImageData) {
         this.width = width;
         this.height = height;
         this.originalImageData = originalImageData;
         this.frameCount = 0;
-        
-        // Only recreate canvas if explicitly told to (when switching modes)
-        if (recreateCanvas) {
-            const canvasWidth = canvas.width;
-            const canvasHeight = canvas.height;
-            const parent = canvas.parentElement;
-            
-            if (!parent) {
-                throw new Error('Canvas has no parent element');
-            }
-            
-            canvas.remove();
-            
-            const newCanvas = document.createElement('canvas');
-            newCanvas.id = 'glCanvas';
-            newCanvas.width = canvasWidth;
-            newCanvas.height = canvasHeight;
-            parent.appendChild(newCanvas);
-            
-            canvas = newCanvas;
-        }
         
         this.gl = canvas.getContext('webgl', {
             preserveDrawingBuffer: true,
@@ -95,24 +74,24 @@ export class SmoothLifeEngine {
         this.edgeFramebuffer = createFramebuffer(gl, this.edgeTexture);
         this.convolutionFramebuffer = createFramebuffer(gl, this.convolutionTexture);
         this.stateFramebuffer0 = createFramebuffer(gl, this.stateTexture0);
-        this.stateFramebuffer1 = createFramebuffer(gl, this.stateTexture1);
+        this.stateFramebuffer1 = createFramebuffer(gl, this.stateFramebuffer1);
         
         this.currentStateIndex = 0;
         
         gl.viewport(0, 0, this.width, this.height);
         
         // Pre-compute edges
-        this.computeEdges(0.6);
+        this.computeEdges(0.3);
     }
     
-    computeEdges(detail) {
+    computeEdges(sensitivity) {
         const gl = this.gl;
         
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.edgeFramebuffer);
         gl.useProgram(this.edgeProgram);
         
         gl.uniform2f(gl.getUniformLocation(this.edgeProgram, 'u_resolution'), this.width, this.height);
-        gl.uniform1f(gl.getUniformLocation(this.edgeProgram, 'u_edgeDetail'), detail);
+        gl.uniform1f(gl.getUniformLocation(this.edgeProgram, 'u_edgeSensitivity'), sensitivity);
         
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.originalTexture);
@@ -141,9 +120,9 @@ export class SmoothLifeEngine {
         const nextTexture = this.currentStateIndex === 0 ? this.stateTexture1 : this.stateTexture0;
         const nextFramebuffer = this.currentStateIndex === 0 ? this.stateFramebuffer1 : this.stateFramebuffer0;
         
-        // Recompute edges if controls are present
-        if (params.edgeDetail !== undefined) {
-            this.computeEdges(params.edgeDetail);
+        // Recompute edges if sensitivity changed
+        if (params.edgeSensitivity !== undefined) {
+            this.computeEdges(params.edgeSensitivity);
         }
         
         // PASS 1: Convolution
@@ -160,9 +139,6 @@ export class SmoothLifeEngine {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, currentTexture);
         gl.uniform1i(gl.getUniformLocation(this.convolutionProgram, 'u_texture'), 0);
-        gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, this.edgeTexture);
-        gl.uniform1i(gl.getUniformLocation(this.convolutionProgram, 'u_edgeTexture'), 1);
         
         bindQuadAttributes(gl, this.convQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -174,10 +150,8 @@ export class SmoothLifeEngine {
         gl.uniform2f(gl.getUniformLocation(this.transitionProgram, 'u_resolution'), this.width, this.height);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_time'), this.frameCount * 0.1);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_chaos'), params.chaos);
-        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_activity'), params.activity ?? 0.6);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_randomNoise'), params.randomNoise);
-        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_edgePump'), params.edgePump ?? 0.2);
-        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_imagePump'), params.imagePump ?? 0.08);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_imageRestore'), params.imageRestore);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_deltaTime'), params.deltaTime);
         
         gl.activeTexture(gl.TEXTURE0);

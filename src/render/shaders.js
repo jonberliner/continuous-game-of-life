@@ -25,13 +25,13 @@ void main() {
 }
 `;
 
-// Edge detection shader - outputs BOOLEAN mask (0 or 1)
+// Edge detection shader - outputs SOFT edge strength (0..1)
 export const edgeDetectionShader = `
 precision highp float;
 
 uniform sampler2D u_texture;
 uniform vec2 u_resolution;
-uniform float u_edgeSensitivity;
+uniform float u_edgeDetail;
 
 varying vec2 v_texCoord;
 
@@ -41,6 +41,8 @@ float getLuminance(vec4 color) {
 
 void main() {
     vec2 pixelSize = 1.0 / u_resolution;
+    // Low detail => coarse sampling, high detail => fine sampling
+    float sampleStep = mix(2.4, 0.7, u_edgeDetail);
     
     // Sobel edge detection
     float gx = 0.0;
@@ -48,7 +50,7 @@ void main() {
     
     for (int x = -1; x <= 1; x++) {
         for (int y = -1; y <= 1; y++) {
-            vec2 offset = vec2(float(x), float(y)) * pixelSize;
+            vec2 offset = vec2(float(x), float(y)) * pixelSize * sampleStep;
             float lum = getLuminance(texture2D(u_texture, v_texCoord + offset));
             
             if (x == -1) gx -= lum * (y == 0 ? 2.0 : 1.0);
@@ -60,13 +62,13 @@ void main() {
     
     float edgeMagnitude = sqrt(gx * gx + gy * gy);
     
-    // BOOLEAN: threshold determines edge sensitivity
-    // Higher sensitivity = lower threshold = more edges
-    float threshold = 1.0 - u_edgeSensitivity;
-    float isEdge = edgeMagnitude > threshold ? 1.0 : 0.0;
+    // Higher detail -> lower threshold + narrower transition => finer map.
+    float threshold = mix(1.05, 0.10, u_edgeDetail);
+    float width = mix(0.40, 0.08, u_edgeDetail);
+    float edgeStrength = smoothstep(threshold - width, threshold + width, edgeMagnitude);
     
     // Store as R channel
-    gl_FragColor = vec4(isEdge, 0.0, 0.0, 1.0);
+    gl_FragColor = vec4(edgeStrength, 0.0, 0.0, 1.0);
 }
 `;
 
@@ -75,6 +77,7 @@ export const convolutionShader = `
 precision highp float;
 
 uniform sampler2D u_texture;
+uniform sampler2D u_edgeTexture;
 uniform vec2 u_resolution;
 uniform float u_radius;  // Single radius parameter
 
@@ -87,46 +90,47 @@ float getLuminance(vec4 color) {
 void main() {
     vec2 pixelSize = 1.0 / u_resolution;
     vec4 centerColor = texture2D(u_texture, v_texCoord);
+    float centerEdge = texture2D(u_edgeTexture, v_texCoord).r;
     
     float lumSum = 0.0;
     vec4 colorSum = vec4(0.0);
-    float count = 0.0;
-    
-    // Fixed max for WebGL
-    const int MAX_STEPS = 30;
-    int steps = int(ceil(u_radius)) + 1;
-    float fSteps = float(steps);
-    
-    for (int x = -MAX_STEPS; x <= MAX_STEPS; x++) {
-        for (int y = -MAX_STEPS; y <= MAX_STEPS; y++) {
-            float fx = float(x);
-            float fy = float(y);
-            float absFx = fx < 0.0 ? -fx : fx;
-            float absFy = fy < 0.0 ? -fy : fy;
-            if (absFx > fSteps || absFy > fSteps) continue;
-            if (x == 0 && y == 0) continue;
-            
-            float dist = length(vec2(fx, fy));
-            if (dist > u_radius) continue;
-            
-            vec2 samplePos = v_texCoord + vec2(fx, fy) * pixelSize;
-            vec4 sampleColor = texture2D(u_texture, samplePos);
-            
-            lumSum += getLuminance(sampleColor);
-            colorSum += sampleColor;
-            count += 1.0;
-        }
+    float weightSum = 0.0;
+    float effectiveRadius = max(u_radius, 0.5);
+
+    // Radial sampling kernel: fixed work, any radius (percentage-of-image) is valid.
+    const int SAMPLE_COUNT = 128;
+    const float GOLDEN_ANGLE = 2.39996323;
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+        float fi = float(i);
+        float t = (fi + 0.5) / float(SAMPLE_COUNT); // 0..1
+        float r = sqrt(t) * effectiveRadius;
+        float a = fi * GOLDEN_ANGLE;
+        vec2 dir = vec2(cos(a), sin(a));
+        vec2 samplePos = v_texCoord + dir * r * pixelSize;
+        vec4 sampleColor = texture2D(u_texture, samplePos);
+        float sampleEdge = texture2D(u_edgeTexture, samplePos).r;
+
+        // Emergent edge barrier: attenuate across strong boundaries.
+        float barrier = max(centerEdge, sampleEdge);
+        float edgeWeight = 1.0 - barrier * 0.9;
+        float radialWeight = 1.0 - t * 0.35;
+        float w = edgeWeight * radialWeight;
+        if (w <= 0.0001) continue;
+
+        lumSum += getLuminance(sampleColor) * w;
+        colorSum += sampleColor * w;
+        weightSum += w;
     }
     
-    float avgLum = count > 0.0 ? lumSum / count : getLuminance(centerColor);
-    vec4 avgColor = count > 0.0 ? colorSum / count : centerColor;
+    float avgLum = weightSum > 0.0 ? lumSum / weightSum : getLuminance(centerColor);
+    vec4 avgColor = weightSum > 0.0 ? colorSum / weightSum : centerColor;
     
     // Pack: R = avg luminance, GBA = avg color
     gl_FragColor = vec4(avgLum, avgColor.rgb);
 }
 `;
 
-// Transition shader - CLEAN AND SIMPLE
+// Transition shader - continuous GoL with soft edge barriers
 export const transitionShader = `
 precision highp float;
 
@@ -138,8 +142,10 @@ uniform vec2 u_resolution;
 uniform float u_time;
 
 uniform float u_chaos;           // 0-1: How easily cells flip
+uniform float u_activity;        // 0-1: How fast evolution proceeds
 uniform float u_randomNoise;     // 0-1: Random color variation  
-uniform float u_imageRestore;    // 0-1: Memory of original (non-edges)
+uniform float u_edgePump;        // 0-1: How strongly edges re-inject original color
+uniform float u_imagePump;       // 0-1: Global source-color pumping
 uniform float u_deltaTime;
 
 varying vec2 v_texCoord;
@@ -152,35 +158,56 @@ float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
 
+float lifeTarget(float current, float neighborhood, float phase, float chaosJitter) {
+    float b1 = 0.25 + 0.03 * phase;
+    float b2 = 0.38 + 0.03 * phase;
+    float s1 = 0.22 + 0.02 * phase;
+    float s2 = 0.50 + 0.02 * phase;
+    float w = 0.045 + abs(chaosJitter) * 0.10;
+    b1 += chaosJitter * 0.05;
+    b2 += chaosJitter * 0.05;
+    s1 += chaosJitter * 0.05;
+    s2 += chaosJitter * 0.05;
+
+    float birth = smoothstep(b1 - w, b1, neighborhood) * (1.0 - smoothstep(b2, b2 + w, neighborhood));
+    float survive = smoothstep(s1 - w, s1, neighborhood) * (1.0 - smoothstep(s2, s2 + w, neighborhood));
+    float alive = smoothstep(0.45, 0.55, current);
+    return mix(birth, survive, alive);
+}
+
 void main() {
     vec4 current = texture2D(u_currentState, v_texCoord);
     vec4 conv = texture2D(u_convolution, v_texCoord);
     vec4 original = texture2D(u_originalImage, v_texCoord);
-    float isEdge = texture2D(u_edgeTexture, v_texCoord).r;
-    
-    // EDGES: Always show original, done!
-    if (isEdge > 0.5) {
-        gl_FragColor = original;
-        return;
-    }
-    
-    // NON-EDGES: Evolve with simple GoL
-    float currentLum = getLuminance(current);
-    float neighborLum = conv.r;  // Average luminance of neighbors
-    
-    // Simple rule: Move toward neighbor average
-    // Chaos controls how responsive we are
-    float diff = neighborLum - currentLum;
-    float response = diff * (0.2 + u_chaos * 0.8) * u_deltaTime;
-    
-    // Add random flicker based on chaos
-    float randomFlip = (hash(v_texCoord * 100.0 + u_time) - 0.5) * u_chaos * 0.05 * u_deltaTime;
-    
-    float newLum = currentLum + response + randomFlip;
-    newLum = clamp(newLum, 0.15, 0.85);
-    
-    // Scale color to new luminance (preserves color ratios for GoL evolution)
-    vec4 evolvedColor = current * (newLum / max(currentLum, 0.01));
+    float edge = texture2D(u_edgeTexture, v_texCoord).r;
+
+    // Local barrier from edge field to isolate pockets near boundaries.
+    vec2 px = 1.0 / u_resolution;
+    float edgeN =
+        texture2D(u_edgeTexture, v_texCoord + vec2(px.x, 0.0)).r +
+        texture2D(u_edgeTexture, v_texCoord - vec2(px.x, 0.0)).r +
+        texture2D(u_edgeTexture, v_texCoord + vec2(0.0, px.y)).r +
+        texture2D(u_edgeTexture, v_texCoord - vec2(0.0, px.y)).r;
+    edgeN *= 0.25;
+    float barrier = clamp(edge * 0.85 + edgeN * 0.75, 0.0, 1.0);
+
+    float localLum = getLuminance(current);
+    float neighLum = mix(conv.r, localLum, barrier);
+
+    // Continuous-GoL target in luminance space.
+    float chaosJitter = (hash(v_texCoord * 180.0 + u_time * 0.35) - 0.5) * 2.0 * u_chaos;
+    float targetLum = lifeTarget(localLum, neighLum, 0.2, chaosJitter);
+    float rate = clamp((0.03 + u_activity * 2.0) * u_deltaTime, 0.0, 1.0);
+    float newLum = mix(localLum, targetLum, rate);
+
+    // Chaos injects bounded disorder (independent from activity/speed).
+    newLum += (hash(v_texCoord * 350.0 + u_time * 0.7) - 0.5) * (0.002 + 0.05 * u_chaos) * u_deltaTime;
+    newLum = clamp(newLum, 0.0, 1.0);
+
+    // Keep local chroma while moving luminance via GoL target.
+    vec3 chroma = current.rgb - vec3(localLum);
+    vec3 evolvedRgb = vec3(newLum) + chroma * mix(0.95, 0.75, edge);
+    vec4 evolvedColor = vec4(clamp(evolvedRgb, 0.0, 1.0), 1.0);
     
     // Generate pure random color
     vec4 randomColor = vec4(
@@ -191,12 +218,12 @@ void main() {
     );
     
     // Mix: 0 = pure evolved, 1 = pure random
-    vec4 newColor = mix(evolvedColor, randomColor, u_randomNoise);
+    vec4 newColor = mix(evolvedColor, randomColor, clamp(u_randomNoise * u_deltaTime * 2.0, 0.0, 1.0));
     
-    // Image restoration: ONLY if > 0!
-    if (u_imageRestore > 0.01) {
-        newColor = mix(newColor, original, u_imageRestore * u_deltaTime * 0.2);
-    }
+    // Pumping: local edge pump + global image pump.
+    float edgePump = clamp(u_edgePump * barrier * u_deltaTime * 2.2, 0.0, 1.0);
+    float imagePump = clamp(u_imagePump * u_deltaTime * 1.4, 0.0, 1.0);
+    newColor = mix(newColor, original, clamp(edgePump + imagePump, 0.0, 1.0));
     
     gl_FragColor = clamp(newColor, 0.0, 1.0);
 }

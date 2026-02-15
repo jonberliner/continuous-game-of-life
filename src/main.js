@@ -1,8 +1,9 @@
 /**
- * Main application orchestration
+ * Main application orchestration - supports Spatial and Frequency modes
  */
 
 import { SmoothLifeEngine } from './core/smoothlife.js';
+import { FrequencyGoLEngine } from './core/frequencyEngine.js';
 import { loadImage, createDefaultImage } from './render/imageLoader.js';
 import { ControlsManager } from './ui/controls.js';
 
@@ -10,6 +11,7 @@ class ContinuousGameOfLife {
     constructor() {
         this.canvas = document.getElementById('glCanvas');
         this.engine = null;
+        this.mode = 'spatial'; // 'spatial' or 'frequency'
         this.isRunning = false;
         this.isPaused = false;
         this.animationFrameId = null;
@@ -33,7 +35,8 @@ class ContinuousGameOfLife {
             (params) => this.onParamChange(params),
             (file) => this.onImageUpload(file),
             () => this.togglePause(),
-            () => this.reset()
+            () => this.reset(),
+            (mode) => this.switchMode(mode)  // New: mode switcher
         );
         
         // Start animation
@@ -50,12 +53,67 @@ class ContinuousGameOfLife {
             this.engine.destroy();
         }
         
-        this.engine = new SmoothLifeEngine(
-            this.canvas,
-            this.imageData.width,
-            this.imageData.height,
-            this.imageData.imageData
-        );
+        if (this.mode === 'spatial') {
+            this.engine = new SmoothLifeEngine(
+                this.canvas,
+                this.imageData.width,
+                this.imageData.height,
+                this.imageData.imageData,
+                false // Don't recreate canvas
+            );
+        } else {
+            this.engine = new FrequencyGoLEngine(
+                this.canvas,
+                this.imageData.width,
+                this.imageData.height,
+                this.imageData.imageData,
+                false // Don't recreate canvas
+            );
+        }
+    }
+    
+    switchMode(mode) {
+        if (mode === this.mode) return;
+        
+        const wasRunning = this.isRunning;
+        this.stop();
+        
+        this.mode = mode;
+        
+        // When switching modes, we DO need to recreate the canvas
+        this.recreateCanvasForMode(mode);
+        this.createEngine();
+        
+        // Re-fetch canvas reference
+        this.canvas = document.getElementById('glCanvas');
+        
+        if (wasRunning) {
+            this.start();
+        } else {
+            this.engine.render();
+        }
+    }
+    
+    recreateCanvasForMode(mode) {
+        const parent = this.canvas.parentElement;
+        const canvasWidth = this.canvas.width;
+        const canvasHeight = this.canvas.height;
+        
+        if (!parent) {
+            throw new Error('Canvas has no parent element');
+        }
+        
+        // Remove old canvas
+        this.canvas.remove();
+        
+        // Create new canvas
+        const newCanvas = document.createElement('canvas');
+        newCanvas.id = 'glCanvas';
+        newCanvas.width = canvasWidth;
+        newCanvas.height = canvasHeight;
+        parent.appendChild(newCanvas);
+        
+        this.canvas = newCanvas;
     }
     
     async onImageUpload(file) {

@@ -3,22 +3,24 @@
  */
 
 export class ControlsManager {
-    constructor(onParamChange, onImageUpload, onPause, onReset) {
+    constructor(onParamChange, onImageUpload, onPause, onReset, onModeSwitch) {
         this.params = {
             // CLEAN SIMPLE PARAMETERS
-            chaos: 0.3,              // How flippy
-            radius: 0.02,            // 2% - single radius
-            randomNoise: 0.1,        // Color noise
-            imageRestore: 0.15,      // Memory of original
-            edgeSensitivity: 0.3,    // Edge detection
-            deltaTime: 0.1           // Speed
+            energy: 0.58,            // Combined motion + disorder
+            radius: 0.045,           // 4.5% - single radius
+            randomNoise: 0.02,       // Color noise
+            imagePump: 0.08,         // Global source pumping
+            edgeDetail: 0.60,        // Fine vs coarse edge map
+            edgePump: 0.22,          // Edge re-injection strength
+            deltaTime: 0.32          // Speed
         };
         
         this.callbacks = {
             onParamChange,
             onImageUpload,
             onPause,
-            onReset
+            onReset,
+            onModeSwitch
         };
         
         this.initControls();
@@ -60,12 +62,31 @@ export class ControlsManager {
         };
         
         // Setup all sliders
-        setupSlider('chaos', 'chaos');
+        setupSlider('energy', 'energy');
         setupSlider('radius', 'radius', true);  // Display as percentage
         setupSlider('randomNoise', 'randomNoise');
-        setupSlider('imageRestore', 'imageRestore');
-        setupSlider('edgeSensitivity', 'edgeSensitivity');
+        setupSlider('imagePump', 'imagePump');
+        setupSlider('edgeDetail', 'edgeDetail');
+        setupSlider('edgePump', 'edgePump');
         setupSlider('deltaTime', 'deltaTime');
+        
+        // Mode switcher
+        const spatialBtn = document.getElementById('spatialMode');
+        const frequencyBtn = document.getElementById('frequencyMode');
+        
+        if (spatialBtn && frequencyBtn) {
+            spatialBtn.addEventListener('click', () => {
+                spatialBtn.classList.add('active');
+                frequencyBtn.classList.remove('active');
+                this.callbacks.onModeSwitch('spatial');
+            });
+            
+            frequencyBtn.addEventListener('click', () => {
+                frequencyBtn.classList.add('active');
+                spatialBtn.classList.remove('active');
+                this.callbacks.onModeSwitch('frequency');
+            });
+        }
         
         // Image upload
         const imageUpload = document.getElementById('imageUpload');
@@ -111,6 +132,19 @@ export class ControlsManager {
     }
     
     getParams() {
-        return { ...this.params };
+        const e = this.params.energy;
+        // One intuitive control under the hood:
+        // activity governs speed, chaos governs rule disorder.
+        const activity = Math.min(1.0, 0.08 + e * 1.05);
+        const chaos = Math.min(1.0, e * e);
+
+        // Keep compatibility for frequency mode until its UI is split.
+        return {
+            ...this.params,
+            activity,
+            chaos,
+            imageRestore: this.params.imagePump,
+            edgeSensitivity: this.params.edgeDetail
+        };
     }
 }

@@ -29,52 +29,65 @@
                     </div>
 
                     <div class="control-section">
+                        <h3>Mode</h3>
+                        <div class="mode-buttons">
+                            <button id="spatialMode" class="mode-btn active">🔲 Spatial</button>
+                            <button id="frequencyMode" class="mode-btn">🎵 Frequency</button>
+                        </div>
+                        <small class="hint">Spatial = pixels evolve | Frequency = harmonics evolve</small>
+                    </div>
+
+                    <div class="control-section">
                         <h3>Game of Life Evolution</h3>
-                        <label title="How easily pixels change state">
-                            Chaos: <span id="chaosValue">0.30</span>
-                            <input type="range" id="chaos" min="0" max="1" value="0.3" step="0.01">
+                        <label title="Combined motion + unpredictability of evolution">
+                            Evolution Energy: <span id="energyValue">0.58</span>
+                            <input type="range" id="energy" min="0" max="1" value="0.58" step="0.01">
                         </label>
-                        <small class="hint">Low = sticky/stable, High = flippy/active</small>
+                        <small class="hint">Low = slow/stable motifs, Mid = flowing pocket evolution, High = fast/chaotic evolution</small>
                     </div>
 
                     <div class="control-section">
                         <h3>Pattern Scale</h3>
                         <label title="Neighborhood size for GoL">
-                            Radius: <span id="radiusValue">2.0%</span>
-                            <input type="range" id="radius" min="0.005" max="0.15" value="0.02" step="0.005">
+                            Radius: <span id="radiusValue">4.0%</span>
+                            <input type="range" id="radius" min="0.001" max="1" value="0.04" step="0.001">
                         </label>
-                        <small class="hint">Small = local patterns, Large = global patterns (% of image)</small>
+                        <small class="hint">0-100% of image scale. Small = local pockets, Large = broad/global coupling</small>
                     </div>
 
                     <div class="control-section">
-                        <h3>Color & Restoration</h3>
+                        <h3>Color & Source Pump</h3>
                         <label title="Amount of random color noise">
-                            Random Noise: <span id="randomNoiseValue">0.10</span>
-                            <input type="range" id="randomNoise" min="0" max="1" value="0.1" step="0.01">
+                            Random Noise: <span id="randomNoiseValue">0.02</span>
+                            <input type="range" id="randomNoise" min="0" max="1" value="0.02" step="0.01">
                         </label>
-                        <small class="hint">Adds random color variation</small>
-                        
-                        <label title="How much non-edge areas remember original colors">
-                            Image Restoration: <span id="imageRestoreValue">0.15</span>
-                            <input type="range" id="imageRestore" min="0" max="1" value="0.15" step="0.01">
+                        <small class="hint">Adds random color variation across all regions</small>
+                        <label title="How strongly original image colors are pumped back globally">
+                            Image Pump: <span id="imagePumpValue">0.08</span>
+                            <input type="range" id="imagePump" min="0" max="1" value="0.08" step="0.01">
                         </label>
-                        <small class="hint">How much non-edges remember original</small>
+                        <small class="hint">Low = freer drift, High = stronger pull back toward original image</small>
                     </div>
 
                     <div class="control-section">
                         <h3>Edge Detection</h3>
-                        <label title="Edge detection sensitivity - edges always show original colors">
-                            Edge Sensitivity: <span id="edgeSensitivityValue">0.30</span>
-                            <input type="range" id="edgeSensitivity" min="0" max="1" value="0.3" step="0.01">
+                        <label title="How fine or coarse the edge map is">
+                            Edge Detail: <span id="edgeDetailValue">0.60</span>
+                            <input type="range" id="edgeDetail" min="0" max="1" value="0.6" step="0.01">
                         </label>
-                        <small class="hint">Low = only major edges, High = detect fine details</small>
+                        <small class="hint">Low = coarse boundaries, High = fine boundaries</small>
+                        <label title="How strongly edge regions pull back toward original colors">
+                            Edge Pump: <span id="edgePumpValue">0.22</span>
+                            <input type="range" id="edgePump" min="0" max="1" value="0.22" step="0.01">
+                        </label>
+                        <small class="hint">Low = edges only block flow, High = edges actively re-imprint source colors</small>
                     </div>
 
                     <div class="control-section">
                         <h3>Speed</h3>
                         <label title="Evolution speed">
-                            Time Step: <span id="deltaTimeValue">0.10</span>
-                            <input type="range" id="deltaTime" min="0.01" max="0.5" value="0.1" step="0.01">
+                            Time Step: <span id="deltaTimeValue">0.32</span>
+                            <input type="range" id="deltaTime" min="0.01" max="0.5" value="0.32" step="0.01">
                         </label>
                         <small class="hint">Higher = faster evolution</small>
                     </div>
