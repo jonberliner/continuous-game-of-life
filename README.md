@@ -1,114 +1,111 @@
-# Continuous Game of Life (Art Build)
+# Continuous Game of Life (WebGL Art Lab)
 
-An image-driven, edge-aware, continuous Game-of-Life experiment focused on **regional evolution**, **section behavior**, and **palette drift** rather than binary cells.
+Image-driven continuous cellular dynamics with edge-aware regional behavior.
+The app runs two modes:
 
-## Artistic Goals
+- `Spatial` mode: main mode, edge/section aware, GoL-like luminance + GoL-like RGB channel updates.
+- `Frequency` mode: simplified multi-scale RGB evolution (experimental, not true FFT).
 
-This project is aimed at a specific look:
+## What The App Currently Does
 
-- Keep the feeling that "a life-like rule" is running underneath the visuals.
-- Infer or construct **sections/pockets** that evolve semi-independently.
-- Let color evolve in meaningful region-level ways (not pure static noise).
-- Preserve a memory of the source image without snapping back too hard.
-- Support exploratory, artist-friendly control rather than exposing raw math.
+1. Loads an image and resizes it (max long side 1080) in `src/render/imageLoader.js`.
+2. Builds an edge map from the source image.
+3. Builds a section/barrier map from edges (soft barriers).
+4. Computes neighborhood convolution with edge barrier attenuation.
+5. Evolves structured noise texture.
+6. Evolves state with continuous GoL-like rules and region-aware pumping.
+7. Renders either final color or section debug view.
 
-The intended result over time is: **coherent local ecosystems**, occasional discrete color shifts, and a slow return pressure toward the source structure.
+Main orchestration: `src/main.js`  
+Spatial engine: `src/core/smoothlife.js`  
+Frequency engine: `src/core/frequencyEngine.js`  
+Spatial shaders: `src/render/shaders.js`
 
-## Current Modes
-
-- **Spatial**: Main mode for section-based local evolution.
-- **Frequency**: Alternate harmonic-style mode (experimental).
-
-## Current Slider Surface (What Exists Now)
+## UI Surface (Current)
 
 ### Core controls
 
-- **Evolution Energy**  
-  Overall "how alive" the simulation feels (speed + instability mapped together).
+- `Edge Fineness`: edge detector detail level.
+- `Edge Pump`: source-color pull near section boundaries.
+- `Edge Merge`: coarse/fine section merge behavior.
+- `Kernel Width`: GoL neighborhood width (slider is log-mapped to percent-of-image radius).
+- `Color Hazard`: per-region color pump event frequency.
+- `Palette Stability`: how long region palette targets persist.
+- `Source Color Adherence`: source-region color influence on pumped palette.
+- `Simulation Speed`: simulation rate (not rule amplitude).
+- `Evolution Energy`: maps to activity + chaos internals.
 
-- **Pattern Size**  
-  Small local motifs <-> broad, larger-scale structures.
+### Advanced controls
 
-- **Section Strength**  
-  How independently pockets evolve versus blending across boundaries.
+- `Micro Detail Influence`
+- `Texture Persistence`
+- `Boundary Leakage`
+- `Show Sections` (debug render toggle)
 
-- **Tile Granularity**  
-  Size/density of synthetic section tiling used to encourage closed compartments.
+### Other UI
 
-- **Natural Edge Adherence**  
-  How much section boundaries follow image edges vs synthetic sectioning.
+- Image upload
+- Mode switch (`Spatial` / `Frequency`)
+- Preset buttons (`Organic`, `Regional`, `Dreamy`, `Wild`, `Source Memory`)
+- Pause / Reset
 
-- **Color Novelty**  
-  How far colors are allowed to drift from source-like palettes.
+## Parameter Mapping Notes
 
-- **Memory**  
-  Long-term pull back toward the source image.
+The UI is artist-facing and maps to multiple internal uniforms in `src/ui/controls.js`:
 
-### Advanced controls (optional)
+- `Evolution Energy` drives both `activity` and `chaos`.
+- `Kernel Width` slider position `t in [0,1]` maps logarithmically:
+  - `radius = 0.001 * (1000 ^ t)` (as fraction of average image dimension).
+- `Simulation Speed` controls how many fixed-delta sim steps are processed per frame.
+  - Rule delta remains fixed (`0.2`) for stability.
 
-- **Edge Detail**
-- **Micro Detail Influence**
-- **Texture Persistence**
+## Spatial Mode Model (Current)
 
-## Honest Critique of Current Controls
+- Luminance evolves via continuous GoL-like birth/survival windows.
+- RGB channels also evolve with channel-wise GoL-like targets.
+- Section barriers attenuate neighborhood influence across strong boundaries.
+- Hazard drives region-keyed stochastic pump events (frequency from slider).
+- Pump colors blend free palette vs source-region palette via source adherence.
+- Edge pump and image pump then pull toward source in controlled ways.
 
-This build is still in transition. The controls are better than raw technical sliders, but there are still UX issues:
+## Frequency Mode (Current)
 
-- **Concept overlap**: `Section Strength`, `Tile Granularity`, and `Natural Edge Adherence` can feel coupled in non-obvious ways.
-- **Name ambiguity**: `Color Novelty` currently influences multiple hidden internals (noise, mutation, saturation behavior), so outcomes can feel broader than expected.
-- **Mode mismatch**: same top-level UI drives both spatial and frequency internals, but not every control has equally clear meaning in both.
-- **Hidden mapping opacity**: macro sliders map to several engine params; this is useful, but hard to reason about without visible feedback.
+This mode is currently a simplified multi-scale RGB system:
 
-## Suggested Improvement Direction (More Succinct + More Expressive)
-
-If we optimize for clarity, the ideal default set is likely:
-
-- `Energy`
-- `Pattern Size`
-- `Sectioning`
-- `Edge Fidelity`
-- `Palette Change`
-- `Memory`
-
-with everything else under Advanced.
-
-Also strongly recommended:
-
-- Live descriptor text per slider position (`Calm / Balanced / Wild`, etc.).
-- A debug overlay toggle for section boundaries (`Show Sections`).
-- Better preset coverage (`Organic`, `Regional`, `Dreamy`, `Wild`, `Source Memory`).
-
-## Technical Sketch (Current Pipeline)
-
-1. Source image upload / resize
-2. Edge map generation
-3. Section map synthesis (edge-informed + synthetic closure)
-4. Neighborhood convolution (edge/section aware)
-5. Structured texture update (section-aware)
-6. Transition step (continuous life-like luminance + coupled color evolution + mutation)
-7. Render
+- Convolution uses different radii per channel (`R > G > B`).
+- Evolution uses continuous GoL-like channel updates plus optional random noise and image restore.
+- It is not a formal Fourier transform / FFT pipeline.
 
 ## Running Locally
 
-Use a local server (modules will fail under `file://`).
+Do not open with `file://` (module/CORS restrictions). Use a local server.
 
 ```bash
 npm install
 npm run dev
 ```
 
-or:
+or
 
 ```bash
 ./start-server.sh
 ```
 
-Then open the local URL shown in terminal.
+## FIXME (Current Known Issues / Next Work)
+
+- `UI duplicate IDs`: `index.html` includes duplicate `pauseBtn` and `resetBtn` elements. Keep one canonical pair to avoid ambiguous event binding.
+- `Region separation`: some images still over-merge sections, causing globally cohesive color fields instead of clearly distinct pocket palettes.
+- `Section control coupling`: `Edge Merge`, `Boundary Leakage`, and `Micro Detail Influence` remain perceptually coupled in ways that are hard to predict.
+- `Hazard semantics`: hazard now controls region pump event frequency, but perceived effect still depends on section quality and palette stability.
+- `Frequency mode naming`: current "Frequency" implementation is multi-scale spatial approximation, not FFT-domain evolution; rename or implement true spectral pipeline.
+- `Debug observability`: add live diagnostics (effective hazard rate, section count estimate, mean section area) to verify slider intent numerically.
+- `Performance scaling`: very large radii and high step rates can still create heavy GPU load on lower-end devices.
+- `Test coverage`: no automated regression tests for shader behavior, slider mappings, or mode switching.
 
 ## Credits
 
-- Inspired by **SmoothLife** (Stephan Rafler): https://arxiv.org/abs/1111.1567
-- Related inspiration: fuzzy-life and other continuous CA visual systems
+- Inspired by SmoothLife (Stephan Rafler): https://arxiv.org/abs/1111.1567
+- Related inspiration: fuzzy-life and continuous cellular automata art systems.
 
 ## License
 

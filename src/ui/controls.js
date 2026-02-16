@@ -4,21 +4,26 @@
 
 export class ControlsManager {
     constructor(onParamChange, onImageUpload, onPause, onReset, onModeSwitch) {
+        this.kernelWidthMin = 0.001;
+        this.kernelWidthMax = 1.0;
         this.params = {
-            // Core artist-friendly controls
+            // Requested core sliders
+            edgeFineness: 0.62,
+            edgePump: 0.22,
+            edgeMerge: 0.72,
+            // Slider position (0..1), mapped logarithmically to actual kernel width
+            kernelWidth: 0.55,
+            hazardRate: 0.20,
+            paletteStability: 0.72,
+            simSpeed: 0.32,
             energy: 0.62,
-            patternSize: 0.48,
-            sectionStrength: 0.70,
-            tileGranularity: 0.58,
-            naturalEdgeAdherence: 0.82,
-            fineEdgeMerge: 0.62,
-            colorNovelty: 0.42,
-            sourceColorAdherence: 0.28,
-            memory: 0.18,
-            // Advanced (optional)
-            edgeDetail: 0.60,
+            // Additional essential control (explicit source-color coupling)
+            sourceColorAdherence: 0.25,
+            // Advanced
             microDetailInfluence: 0.22,
-            noisePersistence: 0.82
+            noisePersistence: 0.82,
+            boundaryLeakage: 0.18,
+            showSections: false
         };
         
         this.callbacks = {
@@ -31,6 +36,11 @@ export class ControlsManager {
         
         this.initControls();
         this.initPresets();
+    }
+
+    kernelWidthFromSlider(t) {
+        const ratio = this.kernelWidthMax / this.kernelWidthMin;
+        return this.kernelWidthMin * Math.pow(ratio, t);
     }
     
     initControls() {
@@ -50,7 +60,11 @@ export class ControlsManager {
                 
                 // Format display based on whether it's a percentage
                 if (isPercentage) {
-                    valueDisplay.textContent = (value * 100).toFixed(1) + '%';
+                    if (id === 'kernelWidth') {
+                        valueDisplay.textContent = (this.kernelWidthFromSlider(value) * 100).toFixed(1) + '%';
+                    } else {
+                        valueDisplay.textContent = (value * 100).toFixed(1) + '%';
+                    }
                 } else {
                     valueDisplay.textContent = value.toFixed(2);
                 }
@@ -61,48 +75,61 @@ export class ControlsManager {
             // Set initial value
             slider.value = this.params[paramName];
             if (isPercentage) {
-                valueDisplay.textContent = (this.params[paramName] * 100).toFixed(1) + '%';
+                if (id === 'kernelWidth') {
+                    valueDisplay.textContent = (this.kernelWidthFromSlider(this.params[paramName]) * 100).toFixed(1) + '%';
+                } else {
+                    valueDisplay.textContent = (this.params[paramName] * 100).toFixed(1) + '%';
+                }
             } else {
                 valueDisplay.textContent = this.params[paramName].toFixed(2);
             }
         };
         
         // Core sliders
+        setupSlider('edgeFineness', 'edgeFineness');
+        setupSlider('edgePump', 'edgePump');
+        setupSlider('edgeMerge', 'edgeMerge');
+        setupSlider('kernelWidth', 'kernelWidth', true);
+        setupSlider('hazardRate', 'hazardRate');
+        setupSlider('paletteStability', 'paletteStability');
+        setupSlider('simSpeed', 'simSpeed');
         setupSlider('energy', 'energy');
-        setupSlider('patternSize', 'patternSize');
-        setupSlider('sectionStrength', 'sectionStrength');
-        setupSlider('tileGranularity', 'tileGranularity');
-        setupSlider('naturalEdgeAdherence', 'naturalEdgeAdherence');
-        setupSlider('fineEdgeMerge', 'fineEdgeMerge');
-        setupSlider('colorNovelty', 'colorNovelty');
         setupSlider('sourceColorAdherence', 'sourceColorAdherence');
-        setupSlider('memory', 'memory');
         // Advanced sliders
-        setupSlider('edgeDetail', 'edgeDetail');
         setupSlider('microDetailInfluence', 'microDetailInfluence');
         setupSlider('noisePersistence', 'noisePersistence');
+        setupSlider('boundaryLeakage', 'boundaryLeakage');
+
+        const showSections = document.getElementById('showSections');
+        if (showSections) {
+            showSections.checked = this.params.showSections;
+            showSections.addEventListener('change', (e) => {
+                this.params.showSections = !!e.target.checked;
+                this.callbacks.onParamChange(this.getParams());
+            });
+        }
 
         // Presets
         const presets = {
             presetOrganic: {
-                energy: 0.52, patternSize: 0.42, sectionStrength: 0.58,
-                tileGranularity: 0.54, naturalEdgeAdherence: 0.70, fineEdgeMerge: 0.58, colorNovelty: 0.28, sourceColorAdherence: 0.42, memory: 0.24
+                edgeFineness: 0.56, edgePump: 0.22, edgeMerge: 0.64, kernelWidth: 0.666,
+                hazardRate: 0.14, paletteStability: 0.78, simSpeed: 0.28, energy: 0.50, sourceColorAdherence: 0.40, boundaryLeakage: 0.14
             },
             presetRegional: {
-                energy: 0.60, patternSize: 0.60, sectionStrength: 0.82,
-                tileGranularity: 0.72, naturalEdgeAdherence: 0.62, fineEdgeMerge: 0.74, colorNovelty: 0.34, sourceColorAdherence: 0.36, memory: 0.22
+                edgeFineness: 0.62, edgePump: 0.24, edgeMerge: 0.84, kernelWidth: 0.735,
+                hazardRate: 0.16, paletteStability: 0.82, simSpeed: 0.30, energy: 0.60, sourceColorAdherence: 0.30, boundaryLeakage: 0.10
             },
             presetDreamy: {
-                energy: 0.40, patternSize: 0.68, sectionStrength: 0.52,
-                tileGranularity: 0.64, naturalEdgeAdherence: 0.30, fineEdgeMerge: 0.68, colorNovelty: 0.62, sourceColorAdherence: 0.14, memory: 0.12
+                edgeFineness: 0.48, edgePump: 0.16, edgeMerge: 0.70, kernelWidth: 0.752,
+                hazardRate: 0.26, paletteStability: 0.70, simSpeed: 0.24, energy: 0.42, sourceColorAdherence: 0.12, boundaryLeakage: 0.24
             },
             presetWild: {
-                energy: 0.86, patternSize: 0.50, sectionStrength: 0.68,
-                tileGranularity: 0.86, naturalEdgeAdherence: 0.18, fineEdgeMerge: 0.84, colorNovelty: 0.88, sourceColorAdherence: 0.06, memory: 0.08
+                edgeFineness: 0.74, edgePump: 0.10, edgeMerge: 0.58, kernelWidth: 0.693,
+                hazardRate: 0.72, paletteStability: 0.28, simSpeed: 0.36, energy: 0.88, sourceColorAdherence: 0.02, boundaryLeakage: 0.30
             },
             presetSourceMemory: {
-                energy: 0.48, patternSize: 0.52, sectionStrength: 0.74,
-                tileGranularity: 0.58, naturalEdgeAdherence: 0.88, fineEdgeMerge: 0.66, colorNovelty: 0.18, sourceColorAdherence: 0.72, memory: 0.58
+                edgeFineness: 0.68, edgePump: 0.40, edgeMerge: 0.78, kernelWidth: 0.715,
+                hazardRate: 0.10, paletteStability: 0.86, simSpeed: 0.30, energy: 0.48, sourceColorAdherence: 0.80, boundaryLeakage: 0.12
             }
         };
 
@@ -111,7 +138,11 @@ export class ControlsManager {
             const valueDisplay = document.getElementById(`${id}Value`);
             if (!slider || !valueDisplay) return;
             slider.value = value;
-            valueDisplay.textContent = isPercentage ? `${(value * 100).toFixed(1)}%` : value.toFixed(2);
+            if (isPercentage && id === 'kernelWidth') {
+                valueDisplay.textContent = `${(this.kernelWidthFromSlider(value) * 100).toFixed(1)}%`;
+            } else {
+                valueDisplay.textContent = isPercentage ? `${(value * 100).toFixed(1)}%` : value.toFixed(2);
+            }
         };
 
         Object.keys(presets).forEach((presetId) => {
@@ -119,15 +150,20 @@ export class ControlsManager {
             if (!btn) return;
             btn.addEventListener('click', () => {
                 Object.assign(this.params, presets[presetId]);
+                updateSliderUI('edgeFineness', this.params.edgeFineness);
+                updateSliderUI('edgePump', this.params.edgePump);
+                updateSliderUI('edgeMerge', this.params.edgeMerge);
+                updateSliderUI('kernelWidth', this.params.kernelWidth, true);
+                updateSliderUI('hazardRate', this.params.hazardRate);
+                updateSliderUI('paletteStability', this.params.paletteStability);
+                updateSliderUI('simSpeed', this.params.simSpeed);
                 updateSliderUI('energy', this.params.energy);
-                updateSliderUI('patternSize', this.params.patternSize);
-                updateSliderUI('sectionStrength', this.params.sectionStrength);
-                updateSliderUI('tileGranularity', this.params.tileGranularity);
-                updateSliderUI('naturalEdgeAdherence', this.params.naturalEdgeAdherence);
-                updateSliderUI('fineEdgeMerge', this.params.fineEdgeMerge);
-                updateSliderUI('colorNovelty', this.params.colorNovelty);
                 updateSliderUI('sourceColorAdherence', this.params.sourceColorAdherence);
-                updateSliderUI('memory', this.params.memory);
+                updateSliderUI('microDetailInfluence', this.params.microDetailInfluence);
+                updateSliderUI('noisePersistence', this.params.noisePersistence);
+                updateSliderUI('boundaryLeakage', this.params.boundaryLeakage);
+                const showSectionsCb = document.getElementById('showSections');
+                if (showSectionsCb) showSectionsCb.checked = !!this.params.showSections;
                 this.callbacks.onParamChange(this.getParams());
             });
         });
@@ -194,40 +230,34 @@ export class ControlsManager {
     }
     
     getParams() {
-        const e = this.params.energy;
-        const size = this.params.patternSize;
-        const sectionStrength = this.params.sectionStrength;
-        const tileGranularity = this.params.tileGranularity;
-        const naturalEdgeAdherence = this.params.naturalEdgeAdherence;
-        const fineEdgeMerge = this.params.fineEdgeMerge;
-        const novelty = this.params.colorNovelty;
+        const energy = this.params.energy;
+        const edgeMerge = this.params.edgeMerge;
         const sourceColorAdherence = this.params.sourceColorAdherence;
-        const memory = this.params.memory;
 
-        // Core mapping: simple user controls -> rich internal behavior
-        const activity = Math.min(1.0, 0.12 + e * 0.95);
-        const chaos = Math.min(1.0, 0.06 + e * e * 0.94);
-        const deltaTime = 0.01 + e * 0.49; // used as speed/rate in main loop
-        const radius = 0.01 + size * 0.45;
+        // Formalized macro mapping
+        const activity = Math.min(1.0, 0.08 + energy * 0.92);
+        const chaos = Math.min(1.0, 0.04 + energy * 0.96);
+        const deltaTime = this.params.simSpeed; // speed only, interpreted in main loop as rate
+        const radius = this.kernelWidthFromSlider(this.params.kernelWidth); // logarithmic kernel width (% image)
 
-        const sectionStrictness = Math.min(1.0, 0.20 + sectionStrength * 0.80);
-        const sectionClosure = Math.min(1.0, 0.18 + sectionStrength * 0.58 + fineEdgeMerge * 0.40);
-        const edgeConfinement = Math.min(1.0, 0.15 + sectionStrength * 0.85);
-        const sectionScale = tileGranularity;
-        const tileSize = Math.min(1.0, tileGranularity * 0.65 + fineEdgeMerge * 0.55);
-        const edgeAdherence = naturalEdgeAdherence;
-        const microDetailInfluence = this.params.microDetailInfluence * (1.0 - fineEdgeMerge * 0.9) * (1.0 - tileGranularity * 0.35);
+        const sectionStrictness = Math.min(1.0, 0.20 + edgeMerge * 0.80);
+        const sectionClosure = Math.min(1.0, 0.15 + edgeMerge * 0.85);
+        const edgeConfinementBase = Math.min(1.0, 0.20 + edgeMerge * 0.80);
+        const edgeConfinement = Math.max(0.0, edgeConfinementBase * (1.0 - this.params.boundaryLeakage));
+        const sectionScale = Math.min(1.0, 0.25 + edgeMerge * 0.75);
+        const tileSize = Math.min(1.0, 0.20 + edgeMerge * 0.80);
+        const edgeAdherence = 1.0; // always prefer natural edges now
+        const microDetailInfluence = Math.max(0.0, this.params.microDetailInfluence * (1.0 - edgeMerge) * 0.6);
 
-        const structuredNoise = novelty;
-        const mutation = Math.min(1.0, 0.03 + novelty * 0.92);
-        const noiseScale = 0.35 + novelty * 0.55;
-        const noisePersistence = Math.min(1.0, Math.max(0.0, this.params.noisePersistence - novelty * 0.10));
+        const structuredNoise = this.params.hazardRate;
+        const mutation = this.params.hazardRate;
+        const noiseScale = 0.45 + this.params.hazardRate * 0.45;
+        const noisePersistence = Math.max(0.0, Math.min(1.0, this.params.paletteStability - this.params.hazardRate * 0.25));
 
-        const imagePump = Math.min(1.0, Math.pow(memory, 1.2) * (0.2 + 0.8 * sourceColorAdherence));
-        const edgePump = Math.min(1.0, (memory * 0.48 + sectionStrength * 0.10) * (0.15 + 0.85 * sourceColorAdherence));
+        const imagePump = 0.0; // source pull handled by sourceColorAdherence + explicit pump controls
+        const edgePump = this.params.edgePump;
 
         return {
-            // Expose mapped internal parameters for both engines.
             activity,
             chaos,
             deltaTime,
@@ -239,8 +269,8 @@ export class ControlsManager {
             mutation,
             imagePump,
             imageRestore: imagePump,
-            edgeDetail: this.params.edgeDetail,
-            edgeSensitivity: this.params.edgeDetail,
+            edgeDetail: this.params.edgeFineness,
+            edgeSensitivity: this.params.edgeFineness,
             edgePump,
             edgeConfinement,
             sectionScale,
@@ -249,7 +279,11 @@ export class ControlsManager {
             sectionClosure,
             sectionStrictness,
             microDetailInfluence,
-            sourceColorAdherence
+            sourceColorAdherence,
+            hazardRate: this.params.hazardRate,
+            paletteStability: this.params.paletteStability,
+            boundaryLeakage: this.params.boundaryLeakage,
+            showSections: this.params.showSections
         };
     }
 }

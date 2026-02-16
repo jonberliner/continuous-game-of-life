@@ -191,6 +191,7 @@ export class SmoothLifeEngine {
     
     step(params) {
         const gl = this.gl;
+        this.lastParams = params;
         this.frameCount++;
         
         const currentTexture = this.currentStateIndex === 0 ? this.stateTexture0 : this.stateTexture1;
@@ -258,6 +259,7 @@ export class SmoothLifeEngine {
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_imagePump'), params.imagePump ?? 0.08);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_structuredNoise'), params.structuredNoise ?? params.randomNoise ?? 0.0);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_mutation'), params.mutation ?? 0.15);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_paletteStability'), params.paletteStability ?? 0.72);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_sectionScale'), params.sectionScale ?? 0.68);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_tileSize'), params.tileSize ?? 0.66);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_edgeAdherence'), params.edgeAdherence ?? 0.45);
@@ -294,6 +296,7 @@ export class SmoothLifeEngine {
     render() {
         const gl = this.gl;
         const currentTexture = this.currentStateIndex === 0 ? this.stateTexture0 : this.stateTexture1;
+        const displayTexture = this.lastParams && this.lastParams.showSections ? this.sectionTexture : currentTexture;
         
         // Render to canvas
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -303,7 +306,7 @@ export class SmoothLifeEngine {
         gl.useProgram(this.displayProgram);
         
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, currentTexture);
+        gl.bindTexture(gl.TEXTURE_2D, displayTexture);
         gl.uniform1i(gl.getUniformLocation(this.displayProgram, 'u_texture'), 0);
         
         bindQuadAttributes(gl, this.displayQuad);

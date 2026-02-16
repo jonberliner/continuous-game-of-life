@@ -51,70 +51,65 @@
 
                     <div class="control-section">
                         <h3>Core Controls</h3>
+                        <label title="How finely the edge detector captures boundary detail">
+                            Edge Fineness: <span id="edgeFinenessValue">0.62</span>
+                            <input type="range" id="edgeFineness" min="0" max="1" value="0.62" step="0.01">
+                        </label>
+                        <small class="hint">Low = only major boundaries, High = finer edge detail</small>
+
+                        <label title="How strongly boundaries re-imprint source structure near edges">
+                            Edge Pump: <span id="edgePumpValue">0.22</span>
+                            <input type="range" id="edgePump" min="0" max="1" value="0.22" step="0.01">
+                        </label>
+                        <small class="hint">Low = edges only constrain flow, High = stronger edge anchoring</small>
+
+                        <label title="Merge dense tiny edge chatter into larger coherent sections">
+                            Edge Merge: <span id="edgeMergeValue">0.72</span>
+                            <input type="range" id="edgeMerge" min="0" max="1" value="0.72" step="0.01">
+                        </label>
+                        <small class="hint">Low = split on micro details, High = consolidate micro fragments into bigger sections</small>
+
+                        <label title="Neighborhood width used by the GoL kernel">
+                            Kernel Width: <span id="kernelWidthValue">4.5%</span>
+                            <input type="range" id="kernelWidth" min="0" max="1" value="0.55" step="0.001">
+                        </label>
+                        <small class="hint">Low = fine/local motifs, High = broad regional motifs</small>
+
+                        <label title="Hazard rate for injecting new random section colors inside closed regions">
+                            Color Hazard: <span id="hazardRateValue">0.20</span>
+                            <input type="range" id="hazardRate" min="0" max="1" value="0.20" step="0.01">
+                        </label>
+                        <small class="hint">Low = stable section colors, High = more frequent discrete color jumps</small>
+
+                        <label title="How long each section keeps a chosen color before changing">
+                            Palette Stability: <span id="paletteStabilityValue">0.72</span>
+                            <input type="range" id="paletteStability" min="0" max="1" value="0.72" step="0.01">
+                        </label>
+                        <small class="hint">Low = frequent palette shifts, High = longer-lived section colors</small>
+
+                        <label title="How strongly colors should adhere to source palette">
+                            Source Color Adherence: <span id="sourceColorAdherenceValue">0.25</span>
+                            <input type="range" id="sourceColorAdherence" min="0" max="1" value="0.25" step="0.01">
+                        </label>
+                        <small class="hint">Low = boundary-only source influence, High = source-like colors</small>
+
+                        <label title="Simulation speed only (does not alter rule equations)">
+                            Simulation Speed: <span id="simSpeedValue">0.32</span>
+                            <input type="range" id="simSpeed" min="0.01" max="0.5" value="0.32" step="0.01">
+                        </label>
+                        <small class="hint">Low = slower evolution in real time, High = faster evolution</small>
+
                         <label title="Overall liveliness: motion speed and unpredictability together">
                             Evolution Energy: <span id="energyValue">0.62</span>
                             <input type="range" id="energy" min="0" max="1" value="0.62" step="0.01">
                         </label>
-                        <small class="hint">Low = calm, Mid = flowing, High = wild</small>
-
-                        <label title="Typical size of evolving structures">
-                            Pattern Size: <span id="patternSizeValue">0.48</span>
-                            <input type="range" id="patternSize" min="0" max="1" value="0.48" step="0.01">
-                        </label>
-                        <small class="hint">Low = small/local motifs, High = large/regional motifs</small>
-
-                        <label title="How strongly regions behave like separate local ecosystems">
-                            Section Strength: <span id="sectionStrengthValue">0.70</span>
-                            <input type="range" id="sectionStrength" min="0" max="1" value="0.70" step="0.01">
-                        </label>
-                        <small class="hint">Low = regions blend together, High = regions evolve independently</small>
-
-                        <label title="How aggressively nearby edge fragments merge into larger closed sections">
-                            Tile Granularity: <span id="tileGranularityValue">0.58</span>
-                            <input type="range" id="tileGranularity" min="0" max="1" value="0.58" step="0.01">
-                        </label>
-                        <small class="hint">Low = keep finer splits, High = merge into bigger inferred sections</small>
-
-                        <label title="How strongly inferred sections adhere to natural image edges">
-                            Natural Edge Adherence: <span id="naturalEdgeAdherenceValue">0.82</span>
-                            <input type="range" id="naturalEdgeAdherence" min="0" max="1" value="0.82" step="0.01">
-                        </label>
-                        <small class="hint">Low = looser inferred boundaries, High = strongly edge-driven boundaries</small>
-
-                        <label title="Merge dense tiny edge fragments into one larger section">
-                            Fine-Edge Merge: <span id="fineEdgeMergeValue">0.62</span>
-                            <input type="range" id="fineEdgeMerge" min="0" max="1" value="0.62" step="0.01">
-                        </label>
-                        <small class="hint">Low = split on tiny details, High = absorb micro edge chatter into larger sections</small>
-
-                        <label title="How much colors can evolve away from the source palette">
-                            Color Novelty: <span id="colorNoveltyValue">0.42</span>
-                            <input type="range" id="colorNovelty" min="0" max="1" value="0.42" step="0.01">
-                        </label>
-                        <small class="hint">Low = source-like colors, High = surprising new pocket colors</small>
-
-                        <label title="How strongly colors should adhere to the source image palette (independent of boundaries)">
-                            Source Color Adherence: <span id="sourceColorAdherenceValue">0.28</span>
-                            <input type="range" id="sourceColorAdherence" min="0" max="1" value="0.28" step="0.01">
-                        </label>
-                        <small class="hint">Low = edges define boundaries only, High = colors stay close to source image palette</small>
-
-                        <label title="How strongly the image is pulled back toward the source over time">
-                            Memory: <span id="memoryValue">0.18</span>
-                            <input type="range" id="memory" min="0" max="1" value="0.18" step="0.01">
-                        </label>
-                        <small class="hint">Low = freer drift, High = stronger return toward source image</small>
+                        <small class="hint">Low = calmer/cleaner dynamics, High = more active and chaotic dynamics</small>
                     </div>
 
                     <div class="control-section">
                         <h3>Advanced (Optional)</h3>
                         <details>
                             <summary>Show advanced controls</summary>
-                            <label title="Fine/coarse sensitivity of initial edge detection">
-                                Edge Detail: <span id="edgeDetailValue">0.60</span>
-                                <input type="range" id="edgeDetail" min="0" max="1" value="0.60" step="0.01">
-                            </label>
-                            <small class="hint">Low = major edges only, High = include fine edge detail</small>
                             <label title="How much tiny details split sections">
                                 Micro Detail Influence: <span id="microDetailInfluenceValue">0.22</span>
                                 <input type="range" id="microDetailInfluence" min="0" max="1" value="0.22" step="0.01">
@@ -125,6 +120,15 @@
                                 <input type="range" id="noisePersistence" min="0" max="1" value="0.82" step="0.01">
                             </label>
                             <small class="hint">Low = constantly changing texture, High = longer-lived section texture identity</small>
+                            <label title="How much neighboring sections are allowed to bleed into each other">
+                                Boundary Leakage: <span id="boundaryLeakageValue">0.18</span>
+                                <input type="range" id="boundaryLeakage" min="0" max="1" value="0.18" step="0.01">
+                            </label>
+                            <small class="hint">Low = sections stay separate, High = more cross-boundary blending</small>
+                            <label title="Display inferred section boundaries instead of final colors">
+                                Show Sections:
+                                <input type="checkbox" id="showSections">
+                            </label>
                         </details>
                     </div>
 
