@@ -7,6 +7,11 @@ attribute vec2 a_texCoord;
 
 varying vec2 v_texCoord;
 
+vec2 hash22(vec2 p) {
+    float n = sin(dot(p, vec2(41.0, 289.0)));
+    return fract(vec2(262144.0, 32768.0) * n);
+}
+
 void main() {
     gl_Position = vec4(a_position, 0.0, 1.0);
     v_texCoord = a_texCoord;
@@ -19,6 +24,11 @@ precision highp float;
 
 uniform sampler2D u_texture;
 varying vec2 v_texCoord;
+
+vec2 hash22(vec2 p) {
+    float n = sin(dot(p, vec2(41.0, 289.0)));
+    return fract(vec2(262144.0, 32768.0) * n);
+}
 
 void main() {
     gl_FragColor = texture2D(u_texture, v_texCoord);
@@ -93,6 +103,108 @@ void main() {
     vec3 nextNoise = mix(center, evolved * edgeDamp, clamp(u_deltaTime * 1.4, 0.0, 1.0));
 
     gl_FragColor = vec4(clamp(nextNoise, 0.0, 1.0), 1.0);
+}
+`;
+
+// Section map shader - converts raw edge detail into implicit, macro region boundaries.
+export const sectionMapShader = `
+precision highp float;
+
+uniform sampler2D u_edgeTexture;
+uniform vec2 u_resolution;
+uniform float u_sectionScale;
+uniform float u_sectionClosure;
+uniform float u_sectionStrictness;
+uniform float u_microDetailInfluence;
+uniform float u_tileSize;
+uniform float u_edgeAdherence;
+
+varying vec2 v_texCoord;
+
+vec2 hash22(vec2 p) {
+    float n = sin(dot(p, vec2(41.0, 289.0)));
+    return fract(vec2(262144.0, 32768.0) * n);
+}
+
+void main() {
+    vec2 px = 1.0 / u_resolution;
+    float center = texture2D(u_edgeTexture, v_texCoord).r;
+
+    // Fine structure sample (tiny details).
+    float fine = center;
+    fine += texture2D(u_edgeTexture, v_texCoord + vec2(px.x, 0.0)).r;
+    fine += texture2D(u_edgeTexture, v_texCoord - vec2(px.x, 0.0)).r;
+    fine += texture2D(u_edgeTexture, v_texCoord + vec2(0.0, px.y)).r;
+    fine += texture2D(u_edgeTexture, v_texCoord - vec2(0.0, px.y)).r;
+    fine += texture2D(u_edgeTexture, v_texCoord + vec2(px.x, px.y)).r;
+    fine += texture2D(u_edgeTexture, v_texCoord + vec2(-px.x, px.y)).r;
+    fine += texture2D(u_edgeTexture, v_texCoord + vec2(px.x, -px.y)).r;
+    fine += texture2D(u_edgeTexture, v_texCoord + vec2(-px.x, -px.y)).r;
+    fine /= 9.0;
+
+    // Coarse structure sample (macro sections).
+    float coarseRadiusPx = mix(2.0, 28.0, u_sectionScale);
+    float coarseRadiusUv = coarseRadiusPx * min(px.x, px.y);
+    const int COARSE_SAMPLES = 20;
+    const float GOLDEN_ANGLE = 2.39996323;
+    float coarseSum = 0.0;
+    for (int i = 0; i < COARSE_SAMPLES; i++) {
+        float fi = float(i);
+        float t = (fi + 0.5) / float(COARSE_SAMPLES);
+        float r = sqrt(t) * coarseRadiusUv;
+        float a = fi * GOLDEN_ANGLE;
+        vec2 uv = v_texCoord + vec2(cos(a), sin(a)) * r;
+        coarseSum += texture2D(u_edgeTexture, uv).r;
+    }
+    float coarse = coarseSum / float(COARSE_SAMPLES);
+
+    // Blend micro detail into macro natural-edge sections.
+    float naturalSeed = mix(coarse, max(coarse, fine), u_microDetailInfluence);
+
+    // Isotropic closure (radial max) to avoid axis-aligned/rectangular artifacts.
+    float closeRadiusPx = mix(1.0, 10.0, u_sectionClosure);
+    float closeRadiusUv = closeRadiusPx * min(px.x, px.y);
+    float dilated = naturalSeed;
+    const int CLOSE_SAMPLES = 24;
+    const float GOLDEN_ANGLE_2 = 2.39996323;
+    for (int i = 0; i < CLOSE_SAMPLES; i++) {
+        float fi = float(i);
+        float t = (fi + 0.5) / float(CLOSE_SAMPLES);
+        float r = sqrt(t) * closeRadiusUv;
+        float a = fi * GOLDEN_ANGLE_2;
+        vec2 uv = v_texCoord + vec2(cos(a), sin(a)) * r;
+        dilated = max(dilated, texture2D(u_edgeTexture, uv).r);
+    }
+    float naturalClosed = mix(naturalSeed, dilated, u_sectionClosure * 0.90);
+
+    // No synthetic tiling boundaries: infer sections from natural edges only.
+    // Repurpose controls:
+    // - u_tileSize now controls additional macro merge scale
+    // - u_edgeAdherence controls how strongly we trust natural edges
+    float mergeRadiusPx = mix(2.0, 24.0, u_tileSize);
+    float mergeRadiusUv = mergeRadiusPx * min(px.x, px.y);
+    float merged = 0.0;
+    float mergedW = 0.0;
+    const int MERGE_SAMPLES = 20;
+    for (int i = 0; i < MERGE_SAMPLES; i++) {
+        float fi = float(i);
+        float t = (fi + 0.5) / float(MERGE_SAMPLES);
+        float r = sqrt(t) * mergeRadiusUv;
+        float a = fi * GOLDEN_ANGLE_2;
+        vec2 uv = v_texCoord + vec2(cos(a), sin(a)) * r;
+        float w = 1.0 - t * 0.45;
+        merged += texture2D(u_edgeTexture, uv).r * w;
+        mergedW += w;
+    }
+    merged = mergedW > 0.0 ? merged / mergedW : naturalClosed;
+    float blended = mix(merged, naturalClosed, u_edgeAdherence);
+
+    // Strictness turns soft ridges into stronger separators.
+    float threshold = mix(0.62, 0.26, u_sectionStrictness);
+    float width = mix(0.35, 0.06, u_sectionStrictness);
+    float sectionBarrier = smoothstep(threshold - width, threshold + width, blended);
+
+    gl_FragColor = vec4(clamp(sectionBarrier, 0.0, 1.0), 0.0, 0.0, 1.0);
 }
 `;
 
@@ -219,6 +331,10 @@ uniform float u_edgePump;        // 0-1: How strongly edges re-inject original c
 uniform float u_imagePump;       // 0-1: Global source-color pumping
 uniform float u_structuredNoise; // 0-1: Structured pocket noise amount
 uniform float u_mutation;        // 0-1: Rare pocket color mutation strength
+uniform float u_sectionScale;    // 0-1: macro section scale
+uniform float u_tileSize;        // 0-1: tiling granularity
+uniform float u_edgeAdherence;   // 0-1: natural-edge adherence vs synthetic tiling
+uniform float u_sourceColorAdherence; // 0-1: palette pull toward source colors
 uniform float u_deltaTime;
 uniform sampler2D u_structuredNoiseTexture;
 
@@ -245,6 +361,11 @@ vec3 hsv2rgb(vec3 c) {
     vec3 p = abs(fract(c.xxx + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
     vec3 rgb = clamp(p - 1.0, 0.0, 1.0);
     return c.z * mix(vec3(1.0), rgb, c.y);
+}
+
+vec2 hash22t(vec2 p) {
+    float n = sin(dot(p, vec2(41.0, 289.0)));
+    return fract(vec2(262144.0, 32768.0) * n);
 }
 
 float lifeTarget(float current, float neighborhood, float phase, float chaosJitter) {
@@ -293,44 +414,83 @@ void main() {
     newLum += (hash(v_texCoord * 350.0 + u_time * 0.7) - 0.5) * (0.002 + 0.05 * u_chaos) * u_deltaTime;
     newLum = clamp(newLum, 0.0, 1.0);
 
-    // GoL-coupled color evolution (HSV): hue/sat evolve from neighborhood life dynamics.
+    // GoL-coupled color evolution (HSV): section-stable palette with slow drift.
     vec3 neighborhoodColor = vec3(conv.g, conv.b, conv.a);
     vec3 hsvCur = rgb2hsv(clamp(current.rgb, 0.0, 1.0));
     vec3 hsvNbr = rgb2hsv(clamp(neighborhoodColor, 0.0, 1.0));
     float activitySignal = clamp(abs(targetLum - localLum) * 2.2 + abs(neighLum - localLum) * 1.2, 0.0, 1.0);
-    float hueDiff = fract(hsvNbr.x - hsvCur.x + 0.5) - 0.5; // shortest circular direction
-    float hueRate = clamp((0.02 + 0.55 * u_activity) * u_deltaTime * (0.35 + 0.95 * activitySignal), 0.0, 1.0);
-    float satRate = clamp((0.03 + 0.45 * u_activity) * u_deltaTime * (0.25 + 0.90 * activitySignal), 0.0, 1.0);
+    float hueRate = clamp((0.015 + 0.18 * u_activity) * u_deltaTime * (0.25 + 0.75 * activitySignal), 0.0, 1.0);
+    float satRate = clamp((0.02 + 0.16 * u_activity) * u_deltaTime * (0.25 + 0.75 * activitySignal), 0.0, 1.0);
 
-    float hueJitter = (hash(v_texCoord * 520.0 + u_time * 0.41) - 0.5) * 0.06 * u_chaos * u_deltaTime;
-    float satTarget = mix(hsvCur.y, hsvNbr.y, 0.55 + 0.35 * activitySignal);
-    float hueNext = fract(hsvCur.x + hueDiff * hueRate + hueJitter);
-    float satNext = clamp(mix(hsvCur.y, satTarget, satRate), 0.05, 1.0);
+    // Section-consistent palette target:
+    // - at source adherence = 0: random discrete *organic* region colors (no grid IDs)
+    // - at source adherence = 1: source/neighborhood-derived colors
+    float novelty = clamp(u_structuredNoise, 0.0, 1.0);
+    float bins = mix(16.0, 6.0, novelty);
+    vec3 hsvOrig = rgb2hsv(clamp(original.rgb, 0.0, 1.0));
+    vec3 structured = texture2D(u_structuredNoiseTexture, v_texCoord).rgb;
+    vec2 regionCoord = floor(structured.rg * mix(10.0, 26.0, 1.0 - u_sectionScale));
+    float rndH = floor(hash(regionCoord + vec2(13.1, 71.7)) * bins + 0.5) / bins;
+    float rndS = mix(0.50, 0.98, floor(hash(regionCoord + vec2(53.3, 19.9)) * 5.0 + 0.5) / 5.0);
 
-    // Mutation: rare, activity-gated hue/sat shifts that stay pocket-local.
-    float mutationChance = clamp(u_mutation * (0.04 + 0.40 * activitySignal) * u_deltaTime, 0.0, 0.25);
-    float mutationRoll = hash(v_texCoord * 830.0 + u_time * 0.29);
+    float srcAdh = clamp(u_sourceColorAdherence, 0.0, 1.0);
+    float hueBaseSrc = mix(hsvNbr.x, hsvOrig.x, srcAdh);
+    float satBaseSrc = mix(hsvNbr.y, hsvOrig.y, srcAdh);
+
+    float hueTarget = mix(rndH, floor(hueBaseSrc * bins + 0.5) / bins, srcAdh);
+    float satTarget = mix(rndS, mix(0.30, 0.92, floor(satBaseSrc * 4.0 + 0.5) / 4.0), srcAdh);
+
+    // Gentle neighborhood coupling so adjacent pockets can relate without oscillation.
+    float hueNbrDiff = fract(hsvNbr.x - hueTarget + 0.5) - 0.5;
+    hueTarget = fract(hueTarget + hueNbrDiff * 0.10 * (1.0 - barrier));
+    satTarget = mix(satTarget, hsvNbr.y, 0.10 * (1.0 - barrier));
+
+    // Section-level mutation: rare organic-region palette jumps.
+    float mutClock = floor(u_time * 0.35);
+    float mutationRoll = hash(regionCoord + vec2(mutClock, mutClock * 1.37));
+    float mutationChance = clamp(u_mutation * (0.03 + 0.22 * novelty + 0.10 * activitySignal) * u_deltaTime, 0.0, 0.18);
     if (mutationRoll < mutationChance) {
-        float hueJump = (hash(v_texCoord * 911.0 + u_time * 0.17) - 0.5) * (0.10 + 0.55 * u_mutation);
-        hueNext = fract(hueNext + hueJump);
-        satNext = clamp(satNext + (0.06 + 0.45 * u_mutation), 0.0, 1.0);
+        float stepDir = hash(regionCoord + vec2(19.0, 41.0) + mutClock) < 0.5 ? -1.0 : 1.0;
+        hueTarget = fract(hueTarget + stepDir / bins);
+        satTarget = clamp(satTarget + 0.10 + 0.45 * u_mutation, 0.0, 1.0);
     }
 
-    // Structured noise acts as a subtle perturbation, not a dominant replacement.
-    vec3 structured = texture2D(u_structuredNoiseTexture, v_texCoord).rgb;
-    float noiseHue = (structured.r - 0.5) * (0.02 + 0.16 * u_structuredNoise) * (1.0 - edge * 0.6);
-    float noiseSat = (structured.g - 0.5) * (0.03 + 0.20 * u_structuredNoise) * (1.0 - edge * 0.5);
-    float noiseVal = (structured.b - 0.5) * (0.01 + 0.10 * u_structuredNoise) * (1.0 - edge * 0.7);
-    hueNext = fract(hueNext + noiseHue);
-    satNext = clamp(satNext + noiseSat, 0.0, 1.0);
-    float valNext = clamp(newLum + noiseVal, 0.0, 1.0);
+    float hueDiff = fract(hueTarget - hsvCur.x + 0.5) - 0.5;
+    float hueNext = fract(hsvCur.x + hueDiff * hueRate);
+    float satNext = clamp(mix(hsvCur.y, satTarget, satRate), 0.10, 1.0);
+
+    // Keep value driven mainly by GoL luminance; tiny section texture only.
+    float noiseVal = (structured.b - 0.5) * (0.003 + 0.03 * u_structuredNoise) * (1.0 - edge * 0.7);
+    float valNext = clamp(newLum + noiseVal, 0.12, 0.92);
     vec3 rgbLife = hsv2rgb(vec3(hueNext, satNext, valNext));
     vec4 newColor = vec4(clamp(rgbLife, 0.0, 1.0), 1.0);
     
-    // Pumping: local edge pump + global image pump.
+    // Pumping:
+    // - Edge pump remains direct (local structural anchoring).
+    // - Global image pump uses half-life mapping + error taper to avoid brittle snap-back.
     float edgePump = clamp(u_edgePump * barrier * u_deltaTime * 2.2, 0.0, 1.0);
-    float imagePump = clamp(u_imagePump * u_deltaTime * 1.4, 0.0, 1.0);
-    newColor = mix(newColor, original, clamp(edgePump + imagePump, 0.0, 1.0));
+
+    // Interpret u_imagePump as a normalized "memory strength" slider.
+    // Map to half-life in simulation time: low slider -> long half-life (very gentle).
+    float pumpStrength = clamp(u_imagePump, 0.0, 1.0);
+    float shaped = pow(pumpStrength, 1.7);
+    float halfLife = mix(180.0, 3.0, shaped);
+    float imagePumpBase = 1.0 - exp(-0.69314718 * u_deltaTime / halfLife);
+
+    // Error-normalized taper: pull harder only when we've drifted far from source.
+    float err = length(newColor.rgb - original.rgb) / 1.7320508;
+    float errTaper = smoothstep(0.06, 0.45, err);
+    float imagePump = imagePumpBase * errTaper;
+
+    float pumpTotal = clamp(edgePump + imagePump, 0.0, 1.0);
+    vec3 hsvNew = rgb2hsv(clamp(newColor.rgb, 0.0, 1.0));
+    vec3 hsvO = rgb2hsv(clamp(original.rgb, 0.0, 1.0));
+    float hueDelta = fract(hsvO.x - hsvNew.x + 0.5) - 0.5;
+    float chromaPull = pumpTotal * clamp(u_sourceColorAdherence, 0.0, 1.0);
+    float huePumped = fract(hsvNew.x + hueDelta * chromaPull);
+    float satPumped = mix(hsvNew.y, hsvO.y, chromaPull);
+    float valPumped = mix(hsvNew.z, hsvO.z, pumpTotal);
+    newColor.rgb = hsv2rgb(vec3(huePumped, satPumped, valPumped));
     
     gl_FragColor = clamp(newColor, 0.0, 1.0);
 }

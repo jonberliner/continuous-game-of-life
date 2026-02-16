@@ -1,140 +1,115 @@
-# Continuous Game of Life - RGBA (v2.0)
+# Continuous Game of Life (Art Build)
 
-A WebGL-based implementation of SmoothLife with **edge-guided constraints**, **momentum-based flow**, and **smart patch injection**.
+An image-driven, edge-aware, continuous Game-of-Life experiment focused on **regional evolution**, **section behavior**, and **palette drift** rather than binary cells.
 
-## What Makes This Special
+## Artistic Goals
 
-This isn't just a trippy image filter - it's **Game of Life running on a continuous domain**, constrained by the edges of your image. The cellular automata rules create organic patterns, while edges keep the structure recognizable.
+This project is aimed at a specific look:
 
-### The Core Idea
+- Keep the feeling that "a life-like rule" is running underneath the visuals.
+- Infer or construct **sections/pockets** that evolve semi-independently.
+- Let color evolve in meaningful region-level ways (not pure static noise).
+- Preserve a memory of the source image without snapping back too hard.
+- Support exploratory, artist-friendly control rather than exposing raw math.
 
-1. **Game of Life at the heart**: SmoothLife rules determine how pixels brighten/darken based on neighbors
-2. **Edges as anchors**: Edge detection keeps the structure tethered
-3. **Patches warp freely**: Areas between edges evolve under GoL rules
-4. **Smart injection**: Patches "remember" their original colors and inject them back
-5. **Momentum creates flow**: Changes accumulate, creating flowing, never-settling motion
+The intended result over time is: **coherent local ecosystems**, occasional discrete color shifts, and a slow return pressure toward the source structure.
 
-## How It Works
+## Current Modes
 
-### The Pipeline
+- **Spatial**: Main mode for section-based local evolution.
+- **Frequency**: Alternate harmonic-style mode (experimental).
 
+## Current Slider Surface (What Exists Now)
+
+### Core controls
+
+- **Evolution Energy**  
+  Overall "how alive" the simulation feels (speed + instability mapped together).
+
+- **Pattern Size**  
+  Small local motifs <-> broad, larger-scale structures.
+
+- **Section Strength**  
+  How independently pockets evolve versus blending across boundaries.
+
+- **Tile Granularity**  
+  Size/density of synthetic section tiling used to encourage closed compartments.
+
+- **Natural Edge Adherence**  
+  How much section boundaries follow image edges vs synthetic sectioning.
+
+- **Color Novelty**  
+  How far colors are allowed to drift from source-like palettes.
+
+- **Memory**  
+  Long-term pull back toward the source image.
+
+### Advanced controls (optional)
+
+- **Edge Detail**
+- **Micro Detail Influence**
+- **Texture Persistence**
+
+## Honest Critique of Current Controls
+
+This build is still in transition. The controls are better than raw technical sliders, but there are still UX issues:
+
+- **Concept overlap**: `Section Strength`, `Tile Granularity`, and `Natural Edge Adherence` can feel coupled in non-obvious ways.
+- **Name ambiguity**: `Color Novelty` currently influences multiple hidden internals (noise, mutation, saturation behavior), so outcomes can feel broader than expected.
+- **Mode mismatch**: same top-level UI drives both spatial and frequency internals, but not every control has equally clear meaning in both.
+- **Hidden mapping opacity**: macro sliders map to several engine params; this is useful, but hard to reason about without visible feedback.
+
+## Suggested Improvement Direction (More Succinct + More Expressive)
+
+If we optimize for clarity, the ideal default set is likely:
+
+- `Energy`
+- `Pattern Size`
+- `Sectioning`
+- `Edge Fidelity`
+- `Palette Change`
+- `Memory`
+
+with everything else under Advanced.
+
+Also strongly recommended:
+
+- Live descriptor text per slider position (`Calm / Balanced / Wild`, etc.).
+- A debug overlay toggle for section boundaries (`Show Sections`).
+- Better preset coverage (`Organic`, `Regional`, `Dreamy`, `Wild`, `Source Memory`).
+
+## Technical Sketch (Current Pipeline)
+
+1. Source image upload / resize
+2. Edge map generation
+3. Section map synthesis (edge-informed + synthetic closure)
+4. Neighborhood convolution (edge/section aware)
+5. Structured texture update (section-aware)
+6. Transition step (continuous life-like luminance + coupled color evolution + mutation)
+7. Render
+
+## Running Locally
+
+Use a local server (modules will fail under `file://`).
+
+```bash
+npm install
+npm run dev
 ```
-Original Image
-    ↓
-Edge Detection (Sobel) → Identifies structure
-    ↓
-Patch Statistics → Learns dominant colors per region
-    ↓
-Convolution → Computes GoL neighborhoods (inner/outer)
-    ↓
-Transition → Applies GoL rules + momentum + injection
-    ↓
-Velocity Update → Tracks momentum for continuous flow
-    ↓
-Render → Beautiful warping constrained by edges
+
+or:
+
+```bash
+./start-server.sh
 ```
 
-### Artist-Friendly Controls
-
-Gone are the cryptic birth/death intervals! New controls:
-
-- **Chaos** (0-1): How unstable the GoL gets
-  - Low = stable, orderly patterns
-  - High = wild, overlapping birth/death creating perpetual motion
-  
-- **Flow** (0-1): How much momentum accumulates
-  - Low = changes happen locally, stop quickly
-  - High = changes ripple outward, create waves
-  
-- **Edge Anchor** (0-1): How strongly edges constrain
-  - Low = edges blur and warp
-  - High = edges stay sharp and fixed
-  
-- **Edge Detail** (0.05-0.8): Edge detection sensitivity
-  - Low = only major edges (simplified structure)
-  - High = fine details (intricate edge network)
-  
-- **Patch Memory** (0-1): How much patches remember original
-  - Low = patches diverge completely in color
-  - High = patches stay close to original palette
-  
-- **Turbulence** (0-1): Amount of smart disturbance
-  - Injects patch-characteristic colors over time
-  - Not random - respects original color distribution!
-
-## The Game of Life Connection
-
-Behind the scenes, it's still SmoothLife:
-- **Inner/Outer Radii**: Define the cellular neighborhoods
-- **Birth/Death Rules**: Determined by Chaos parameter
-- **Sigmoid Transitions**: Smooth, continuous birth/death
-- **Luminance-Based**: Brightness drives the rules
-- **Color Bleeding**: RGB follows the luminance decisions
-
-The beauty: **It's disguised Game of Life with artistic constraints!**
-
-## What's Different from v1
-
-### v1.0 (Original):
-- Full image restoration (boring stability)
-- Manual birth/death sliders (confusing)
-- No momentum (settled into equilibrium)
-- Random noise injection (no structure)
-
-### v2.0 (This Version):
-- ✅ Edge-only anchoring (structure preserved, interiors warp)
-- ✅ Artist-friendly controls (describes outcomes, not math)
-- ✅ Momentum/velocity field (perpetual motion)
-- ✅ Smart patch injection (respects original colors/texture)
-- ✅ Local variation in inertia (textured areas flow more)
-
-## Technical Details
-
-### Edge Detection
-- Sobel operator for gradient magnitude and direction
-- Adjustable sensitivity threshold
-- Stores: edge strength, edge direction (cos/sin), luminance
-
-### Patch Statistics
-- Computes per-patch dominant colors
-- Avoids edges (weights by 1 - edge strength)
-- Stores: dominant RGB, color variance
-
-### Momentum System
-- Tracks velocity per pixel (stored in separate texture)
-- Inertia varies by:
-  - Distance from edges (center of patches = more inertia)
-  - Texture variance (textured areas = more momentum)
-  - Edge strength (edges = less momentum)
-- Creates naturally flowing behavior!
-
-### Smart Injection
-- Uses Perlin noise for timing
-- Injects dominant patch colors with variance
-- Respects patch boundaries (edges block injection)
-- Strength controlled by Turbulence × Patch Memory
-
-## Usage Tips
-
-1. **For continuous warping**: Chaos = 0.5+, Flow = 0.7+, Edge Anchor = 0.5-0.7
-2. **For stable breathing**: Chaos = 0.2, Flow = 0.3, Edge Anchor = 0.8+
-3. **For edge-locked chaos**: Chaos = 0.8, Flow = 0.9, Edge Anchor = 0.9
-4. **High-contrast images work best** - more defined edges = better anchoring
-5. **Experiment with Edge Detail** - simplify or complexify the structure
-
-## Browser Compatibility
-
-Requires WebGL 1.0. Tested on:
-- Chrome/Edge (recommended)
-- Firefox
-- Safari
+Then open the local URL shown in terminal.
 
 ## Credits
 
-Based on:
-- **SmoothLife** by Stephan Rafler (https://arxiv.org/abs/1111.1567)
-- Inspired by fuzzy-life (https://github.com/breadloafsky/fuzzy-life)
+- Inspired by **SmoothLife** (Stephan Rafler): https://arxiv.org/abs/1111.1567
+- Related inspiration: fuzzy-life and other continuous CA visual systems
 
 ## License
 
-MIT - Use and modify freely!
+MIT

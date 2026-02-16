@@ -8,7 +8,8 @@ import {
     edgeDetectionShader,
     convolutionShader, 
     transitionShader,
-    structuredNoiseUpdateShader
+    structuredNoiseUpdateShader,
+    sectionMapShader
 } from '../render/shaders.js';
 import { 
     createShader, 
@@ -74,12 +75,14 @@ export class SmoothLifeEngine {
         const convFs = createShader(gl, gl.FRAGMENT_SHADER, convolutionShader);
         const transFs = createShader(gl, gl.FRAGMENT_SHADER, transitionShader);
         const noiseFs = createShader(gl, gl.FRAGMENT_SHADER, structuredNoiseUpdateShader);
+        const sectionFs = createShader(gl, gl.FRAGMENT_SHADER, sectionMapShader);
         
         this.displayProgram = createProgram(gl, vs, displayFs);
         this.edgeProgram = createProgram(gl, vs, edgeFs);
         this.convolutionProgram = createProgram(gl, vs, convFs);
         this.transitionProgram = createProgram(gl, vs, transFs);
         this.noiseProgram = createProgram(gl, vs, noiseFs);
+        this.sectionProgram = createProgram(gl, vs, sectionFs);
         
         // Setup geometry
         this.displayQuad = setupQuadFlipped(gl, this.displayProgram);
@@ -87,6 +90,7 @@ export class SmoothLifeEngine {
         this.convQuad = setupQuad(gl, this.convolutionProgram);
         this.transQuad = setupQuad(gl, this.transitionProgram);
         this.noiseQuad = setupQuad(gl, this.noiseProgram);
+        this.sectionQuad = setupQuad(gl, this.sectionProgram);
         
         // Create textures
         this.originalTexture = createTexture(gl, this.width, this.height, this.originalImageData);
@@ -96,6 +100,7 @@ export class SmoothLifeEngine {
         this.convolutionTexture = createTexture(gl, this.width, this.height);
         this.noiseTexture0 = createTexture(gl, this.width, this.height);
         this.noiseTexture1 = createTexture(gl, this.width, this.height);
+        this.sectionTexture = createTexture(gl, this.width, this.height);
         
         // Create framebuffers
         this.edgeFramebuffer = createFramebuffer(gl, this.edgeTexture);
@@ -104,6 +109,7 @@ export class SmoothLifeEngine {
         this.stateFramebuffer1 = createFramebuffer(gl, this.stateTexture1);
         this.noiseFramebuffer0 = createFramebuffer(gl, this.noiseTexture0);
         this.noiseFramebuffer1 = createFramebuffer(gl, this.noiseTexture1);
+        this.sectionFramebuffer = createFramebuffer(gl, this.sectionTexture);
         
         this.currentStateIndex = 0;
         this.currentNoiseIndex = 0;
@@ -112,6 +118,7 @@ export class SmoothLifeEngine {
         
         // Pre-compute edges
         this.computeEdges(0.6);
+        this.computeSections();
         this.seedNoiseTextures();
     }
     
@@ -129,6 +136,27 @@ export class SmoothLifeEngine {
         gl.uniform1i(gl.getUniformLocation(this.edgeProgram, 'u_texture'), 0);
         
         bindQuadAttributes(gl, this.edgeQuad);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    computeSections(params = {}) {
+        const gl = this.gl;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.sectionFramebuffer);
+        gl.useProgram(this.sectionProgram);
+
+        gl.uniform2f(gl.getUniformLocation(this.sectionProgram, 'u_resolution'), this.width, this.height);
+        gl.uniform1f(gl.getUniformLocation(this.sectionProgram, 'u_sectionScale'), params.sectionScale ?? 0.68);
+        gl.uniform1f(gl.getUniformLocation(this.sectionProgram, 'u_sectionClosure'), params.sectionClosure ?? 0.72);
+        gl.uniform1f(gl.getUniformLocation(this.sectionProgram, 'u_sectionStrictness'), params.sectionStrictness ?? 0.70);
+        gl.uniform1f(gl.getUniformLocation(this.sectionProgram, 'u_microDetailInfluence'), params.microDetailInfluence ?? 0.22);
+        gl.uniform1f(gl.getUniformLocation(this.sectionProgram, 'u_tileSize'), params.tileSize ?? 0.66);
+        gl.uniform1f(gl.getUniformLocation(this.sectionProgram, 'u_edgeAdherence'), params.edgeAdherence ?? 0.45);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.edgeTexture);
+        gl.uniform1i(gl.getUniformLocation(this.sectionProgram, 'u_edgeTexture'), 0);
+
+        bindQuadAttributes(gl, this.sectionQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
     
@@ -174,6 +202,7 @@ export class SmoothLifeEngine {
         if (params.edgeDetail !== undefined) {
             this.computeEdges(params.edgeDetail);
         }
+        this.computeSections(params);
         
         // PASS 1: Convolution
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.convolutionFramebuffer);
@@ -190,7 +219,7 @@ export class SmoothLifeEngine {
         gl.bindTexture(gl.TEXTURE_2D, currentTexture);
         gl.uniform1i(gl.getUniformLocation(this.convolutionProgram, 'u_texture'), 0);
         gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, this.edgeTexture);
+        gl.bindTexture(gl.TEXTURE_2D, this.sectionTexture);
         gl.uniform1i(gl.getUniformLocation(this.convolutionProgram, 'u_edgeTexture'), 1);
         
         bindQuadAttributes(gl, this.convQuad);
@@ -210,7 +239,7 @@ export class SmoothLifeEngine {
         gl.bindTexture(gl.TEXTURE_2D, currentNoiseTexture);
         gl.uniform1i(gl.getUniformLocation(this.noiseProgram, 'u_prevNoise'), 0);
         gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, this.edgeTexture);
+        gl.bindTexture(gl.TEXTURE_2D, this.sectionTexture);
         gl.uniform1i(gl.getUniformLocation(this.noiseProgram, 'u_edgeTexture'), 1);
 
         bindQuadAttributes(gl, this.noiseQuad);
@@ -229,6 +258,10 @@ export class SmoothLifeEngine {
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_imagePump'), params.imagePump ?? 0.08);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_structuredNoise'), params.structuredNoise ?? params.randomNoise ?? 0.0);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_mutation'), params.mutation ?? 0.15);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_sectionScale'), params.sectionScale ?? 0.68);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_tileSize'), params.tileSize ?? 0.66);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_edgeAdherence'), params.edgeAdherence ?? 0.45);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_sourceColorAdherence'), params.sourceColorAdherence ?? 0.35);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_deltaTime'), params.deltaTime);
         
         gl.activeTexture(gl.TEXTURE0);
@@ -244,7 +277,7 @@ export class SmoothLifeEngine {
         gl.uniform1i(gl.getUniformLocation(this.transitionProgram, 'u_originalImage'), 2);
         
         gl.activeTexture(gl.TEXTURE3);
-        gl.bindTexture(gl.TEXTURE_2D, this.edgeTexture);
+        gl.bindTexture(gl.TEXTURE_2D, this.sectionTexture);
         gl.uniform1i(gl.getUniformLocation(this.transitionProgram, 'u_edgeTexture'), 3);
         gl.activeTexture(gl.TEXTURE4);
         gl.bindTexture(gl.TEXTURE_2D, currentNoiseTexture);
@@ -285,6 +318,7 @@ export class SmoothLifeEngine {
         gl.deleteProgram(this.convolutionProgram);
         gl.deleteProgram(this.transitionProgram);
         gl.deleteProgram(this.noiseProgram);
+        gl.deleteProgram(this.sectionProgram);
         
         gl.deleteTexture(this.originalTexture);
         gl.deleteTexture(this.edgeTexture);
@@ -293,6 +327,7 @@ export class SmoothLifeEngine {
         gl.deleteTexture(this.convolutionTexture);
         gl.deleteTexture(this.noiseTexture0);
         gl.deleteTexture(this.noiseTexture1);
+        gl.deleteTexture(this.sectionTexture);
         
         gl.deleteFramebuffer(this.edgeFramebuffer);
         gl.deleteFramebuffer(this.convolutionFramebuffer);
@@ -300,5 +335,6 @@ export class SmoothLifeEngine {
         gl.deleteFramebuffer(this.stateFramebuffer1);
         gl.deleteFramebuffer(this.noiseFramebuffer0);
         gl.deleteFramebuffer(this.noiseFramebuffer1);
+        gl.deleteFramebuffer(this.sectionFramebuffer);
     }
 }

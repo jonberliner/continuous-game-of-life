@@ -17,6 +17,8 @@ class ContinuousGameOfLife {
         this.animationFrameId = null;
         
         this.imageData = null;
+        this.simAccumulator = 0;
+        this.fixedSimulationDelta = 0.2; // Keep simulation dynamics stable; speed controls rate only.
         
         this.init();
     }
@@ -153,6 +155,7 @@ class ContinuousGameOfLife {
         this.stop();
         
         this.engine.reset();
+        this.simAccumulator = 0;
         this.engine.render();
         
         if (wasRunning) {
@@ -184,7 +187,25 @@ class ContinuousGameOfLife {
         
         if (!this.isPaused) {
             const params = this.controls.getParams();
-            this.engine.step(params);
+            // Interpret slider as simulation rate, not simulation dt.
+            // This keeps behavior stable while changing how fast time advances.
+            const speedNorm = Math.max(0, Math.min(1, (params.deltaTime - 0.01) / 0.49));
+            const simRate = 0.08 + speedNorm * 3.2; // ~0.08 to ~3.28 sim steps per frame
+            this.simAccumulator += simRate;
+
+            const stepParams = {
+                ...params,
+                deltaTime: this.fixedSimulationDelta
+            };
+
+            let steps = 0;
+            const maxStepsPerFrame = 8;
+            while (this.simAccumulator >= 1.0 && steps < maxStepsPerFrame) {
+                this.engine.step(stepParams);
+                this.simAccumulator -= 1.0;
+                steps++;
+            }
+
             this.engine.render();
         }
         
