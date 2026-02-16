@@ -410,33 +410,72 @@ void main() {
     float barrier = clamp(edge * 0.85 + edgeN * 0.75, 0.0, 1.0);
 
     float localLum = getLuminance(current);
-    float neighLum = mix(conv.r, localLum, barrier);
-
-    // Continuous-GoL target in luminance space.
-    float chaosJitter = (hash(v_texCoord * 180.0 + u_time * 0.35) - 0.5) * 2.0 * u_chaos;
-    float targetLum = lifeTarget(localLum, neighLum, 0.2, chaosJitter);
-    float rate = clamp((0.03 + u_activity * 2.0) * u_deltaTime, 0.0, 1.0);
-    float newLum = mix(localLum, targetLum, rate);
-
-    // Chaos injects bounded disorder (independent from activity/speed).
-    newLum += (hash(v_texCoord * 350.0 + u_time * 0.7) - 0.5) * (0.002 + 0.05 * u_chaos) * u_deltaTime;
-    newLum = clamp(newLum, 0.0, 1.0);
-
-    // Color dynamics are also GoL-like (per-channel), using the same neighborhood field.
     vec3 neighborhoodColor = mix(vec3(conv.g, conv.b, conv.a), current.rgb, barrier * 0.75);
-    float activitySignal = clamp(abs(targetLum - localLum) * 2.2 + abs(neighLum - localLum) * 1.2, 0.0, 1.0);
-    float channelRate = clamp((0.02 + 0.90 * u_activity) * u_deltaTime * (0.25 + 0.75 * activitySignal), 0.0, 1.0);
-    float cJ = u_chaos * 0.65;
-    vec3 rgbTarget = vec3(
-        lifeTarget(current.r, neighborhoodColor.r, 0.17, (hash(v_texCoord * 101.0 + u_time * 0.53) - 0.5) * 2.0 * cJ),
-        lifeTarget(current.g, neighborhoodColor.g, 0.47, (hash(v_texCoord * 131.0 + u_time * 0.61) - 0.5) * 2.0 * cJ),
-        lifeTarget(current.b, neighborhoodColor.b, 0.79, (hash(v_texCoord * 173.0 + u_time * 0.67) - 0.5) * 2.0 * cJ)
-    );
-    vec3 rgbLife = mix(current.rgb, rgbTarget, channelRate);
+    float neighLum = getLuminance(vec4(neighborhoodColor, 1.0));
 
-    // Keep color luminance aligned with the primary luminance GoL state.
+    // Build a coupled Life state from luminance + chroma so pattern topology depends on color.
+    vec3 hsvCur0 = rgb2hsv(clamp(current.rgb, 0.0, 1.0));
+    vec3 hsvNbr0 = rgb2hsv(clamp(neighborhoodColor, 0.0, 1.0));
+    float chromaCur = max(current.r, max(current.g, current.b)) - min(current.r, min(current.g, current.b));
+    float chromaNbr = max(neighborhoodColor.r, max(neighborhoodColor.g, neighborhoodColor.b)) - min(neighborhoodColor.r, min(neighborhoodColor.g, neighborhoodColor.b));
+    float imbalanceCur = (abs(current.r - current.g) + abs(current.g - current.b) + abs(current.b - current.r)) / 3.0;
+    float imbalanceNbr = (abs(neighborhoodColor.r - neighborhoodColor.g) + abs(neighborhoodColor.g - neighborhoodColor.b) + abs(neighborhoodColor.b - neighborhoodColor.r)) / 3.0;
+    float hueFlow = fract(hsvNbr0.x - hsvCur0.x + 0.5) - 0.5;
+    float satFlow = hsvNbr0.y - hsvCur0.y;
+    float lumGrad = neighLum - localLum;
+    float chromaGrad = chromaNbr - chromaCur;
+    float lifeCur = clamp(localLum + 0.16 * hsvCur0.y + 0.10 * chromaCur + 0.06 * imbalanceCur, 0.0, 1.0);
+    float lifeNbr = clamp(
+        neighLum
+        + 0.16 * hsvNbr0.y
+        + 0.10 * chromaNbr
+        + 0.06 * imbalanceNbr
+        + 0.18 * lumGrad
+        + 0.10 * chromaGrad
+        + 0.08 * hueFlow
+        + 0.06 * satFlow,
+        0.0, 1.0
+    );
+
+    // Continuous-GoL target on coupled state.
+    float chaosJitter = (hash(v_texCoord * 180.0 + u_time * 0.35) - 0.5) * 2.0 * u_chaos;
+    float targetLife = lifeTarget(lifeCur, lifeNbr, 0.2, chaosJitter);
+    float lifeRate = clamp((0.03 + u_activity * 2.0) * u_deltaTime, 0.0, 1.0);
+    float newLife = mix(lifeCur, targetLife, lifeRate);
+    // Signed neighborhood feedback keeps high-energy states from collapsing to flat attractors.
+    newLife += (lifeNbr - lifeCur) * (0.02 + 0.24 * u_chaos) * u_deltaTime;
+    newLife += (hash(v_texCoord * 350.0 + u_time * 0.7) - 0.5) * (0.001 + 0.04 * u_chaos) * u_deltaTime;
+    newLife = clamp(newLife, 0.0, 1.0);
+
+    float growth = newLife - lifeCur;
+    float growthAbs = clamp(abs(growth) * 2.4, 0.0, 1.0);
+    float activitySignal = clamp(
+        growthAbs * 0.65
+        + length(neighborhoodColor - current.rgb) * 0.45
+        + abs(lifeNbr - lifeCur) * 0.90
+        + u_activity * 0.20,
+        0.0, 1.0
+    );
+
+    // Use coupled life state to set luminance; keeps pattern field and color field locked together.
+    float newLum = clamp(mix(localLum, newLife, 0.82), 0.0, 1.0);
+
+    // Color update driven by same growth signal.
+    float channelRate = clamp((0.02 + 0.90 * u_activity) * u_deltaTime * (0.25 + 0.75 * activitySignal), 0.0, 1.0);
+    float coupling = (0.20 + 0.35 * (1.0 - barrier)) * channelRate;
+    vec3 rgbBase = mix(current.rgb, neighborhoodColor, coupling);
+    vec3 chromaAxis = current.rgb - vec3(localLum);
+    vec3 neighborChromaAxis = neighborhoodColor - vec3(neighLum);
+    rgbBase += chromaAxis * growth * (0.25 + 0.55 * u_activity);
+    rgbBase += neighborChromaAxis * growth * (0.18 + 0.30 * u_activity);
+    vec3 cycleAxis = vec3(current.g, current.b, current.r) - current.rgb;
+    rgbBase += cycleAxis * growth * (0.12 + 0.38 * u_activity);
+    rgbBase += (neighborhoodColor - current.rgb) * (0.05 + 0.20 * u_activity) * (0.25 + 0.75 * growthAbs);
+    vec3 rgbLife = clamp(rgbBase, 0.0, 1.0);
+
+    // Enforce luminance consistency after chroma feedback.
     float lifeLum = max(dot(rgbLife, vec3(0.299, 0.587, 0.114)), 1.0e-4);
-    rgbLife *= clamp(newLum / lifeLum, 0.35, 2.8);
+    rgbLife *= clamp(newLum / lifeLum, 0.45, 2.4);
     rgbLife = clamp(rgbLife, 0.0, 1.0);
 
     // Region signature from edge-aware local source pooling (bounded by section barriers).
@@ -493,7 +532,7 @@ void main() {
     float sBase0 = mix(0.68, 1.0, floor(hash(regionCell + vec2(7.3, 11.9)) * 4.0 + 0.5) / 4.0);
     float vBase0 = mix(0.52, 0.98, floor(hash(regionCell + vec2(13.7, 17.3)) * 5.0 + 0.5) / 5.0);
     // Region-base palette drifts over time (hazard controls drift speed, stability damps it).
-    float driftRate = (0.02 + 0.45 * hazard) * (0.25 + 0.75 * (1.0 - stability));
+    float driftRate = (0.02 + 0.45 * hazard) * (0.20 + 0.80 * (1.0 - stability)) * (0.35 + 0.65 * activitySignal);
     float hBase = fract(hBase0 + (u_time + regionPhase * 23.0) * driftRate);
     float sBase = clamp(sBase0 + (hash(regionCell + vec2(23.0, 41.0)) - 0.5) * 0.18 * sin((u_time + regionPhase * 17.0) * driftRate * 1.7), 0.55, 1.0);
     float vBase = clamp(vBase0 + (hash(regionCell + vec2(61.0, 7.0)) - 0.5) * 0.14 * sin((u_time + regionPhase * 31.0) * driftRate * 1.3), 0.42, 1.0);
@@ -507,14 +546,17 @@ void main() {
     vec3 baseColor = mix(freeBase, regionSrc, srcAdh);
 
     // Pump integrates into GoL color state (not a separate overlay).
-    float basePumpAmt = (1.0 - srcAdh) * mix(0.08, 0.24, 1.0 - stability) * (0.45 + 0.55 * (1.0 - barrier));
+    float basePumpAmt = (1.0 - srcAdh)
+        * mix(0.08, 0.24, 1.0 - stability)
+        * (0.45 + 0.55 * (1.0 - barrier))
+        * (0.20 + 0.80 * activitySignal);
     vec3 rgbBasePumped = mix(rgbLife, baseColor, clamp(basePumpAmt, 0.0, 0.35));
     // Hazard pump follows a region target that changes at jumpRate.
-    float pumpAmt = clamp((0.12 + 1.05 * hazard) * (0.25 + 0.75 * (1.0 - stability)) * u_deltaTime, 0.0, 1.0);
+    float pumpAmt = clamp((0.08 + 0.95 * hazard) * (0.20 + 0.80 * (1.0 - stability)) * u_deltaTime * (0.25 + 0.75 * activitySignal), 0.0, 1.0);
     vec3 rgbPumped = mix(rgbBasePumped, pumpColor, pumpAmt);
 
     // Encourage region-flat pockets by nudging toward region base color inside barriers.
-    float patchUniformity = (0.08 + 0.18 * (1.0 - stability)) * (1.0 - barrier);
+    float patchUniformity = (0.03 + 0.10 * (1.0 - stability)) * (1.0 - barrier) * (1.0 - 0.85 * activitySignal);
     rgbPumped = mix(rgbPumped, baseColor, patchUniformity);
 
     // Prevent grayscale collapse in free-color regimes.
