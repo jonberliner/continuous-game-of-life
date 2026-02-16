@@ -343,8 +343,10 @@ uniform float u_sectionScale;    // 0-1: macro section scale
 uniform float u_tileSize;        // 0-1: tiling granularity
 uniform float u_edgeAdherence;   // 0-1: natural-edge adherence vs synthetic tiling
 uniform float u_sourceColorAdherence; // 0-1: palette pull toward source colors
+uniform float u_patternCoupling; // 0-1: coupling strength between color and pattern topology
 uniform float u_deltaTime;
 uniform sampler2D u_structuredNoiseTexture;
+uniform sampler2D u_regionTexture;
 
 varying vec2 v_texCoord;
 
@@ -377,15 +379,23 @@ vec2 hash22t(vec2 p) {
 }
 
 float lifeTarget(float current, float neighborhood, float phase, float chaosJitter) {
-    float b1 = 0.25 + 0.03 * phase;
-    float b2 = 0.38 + 0.03 * phase;
-    float s1 = 0.22 + 0.02 * phase;
-    float s2 = 0.50 + 0.02 * phase;
-    float w = 0.045 + abs(chaosJitter) * 0.10;
-    b1 += chaosJitter * 0.05;
-    b2 += chaosJitter * 0.05;
-    s1 += chaosJitter * 0.05;
-    s2 += chaosJitter * 0.05;
+    // Phase (from color coupling) shifts GoL windows:
+    // different colors = different equilibrium points.
+    float pShift = phase * 0.10;
+    float b1 = 0.25 + pShift;
+    float b2 = 0.38 + pShift;
+    float s1 = 0.22 + pShift * 0.7;
+    float s2 = 0.50 + pShift * 0.7;
+
+    // Chaos NARROWS transition width (sharper thresholds = easier to flip)
+    // and shifts window positions via spatially coherent jitter.
+    // Wide w = forgiving = stable. Narrow w = sensitive = dynamic.
+    float absJ = abs(chaosJitter);
+    float w = mix(0.07, 0.015, absJ);
+    b1 += chaosJitter * 0.12;
+    b2 += chaosJitter * 0.12;
+    s1 += chaosJitter * 0.12;
+    s2 += chaosJitter * 0.12;
 
     float birth = smoothstep(b1 - w, b1, neighborhood) * (1.0 - smoothstep(b2, b2 + w, neighborhood));
     float survive = smoothstep(s1 - w, s1, neighborhood) * (1.0 - smoothstep(s2, s2 + w, neighborhood));
@@ -413,38 +423,63 @@ void main() {
     vec3 neighborhoodColor = mix(vec3(conv.g, conv.b, conv.a), current.rgb, barrier * 0.75);
     float neighLum = getLuminance(vec4(neighborhoodColor, 1.0));
 
-    // Build a coupled Life state from luminance + chroma so pattern topology depends on color.
+    // Read structured noise early: used for spatially coherent GoL jitter.
+    vec3 structured = texture2D(u_structuredNoiseTexture, v_texCoord).rgb;
+
+    // Color analysis.
     vec3 hsvCur0 = rgb2hsv(clamp(current.rgb, 0.0, 1.0));
     vec3 hsvNbr0 = rgb2hsv(clamp(neighborhoodColor, 0.0, 1.0));
     float chromaCur = max(current.r, max(current.g, current.b)) - min(current.r, min(current.g, current.b));
     float chromaNbr = max(neighborhoodColor.r, max(neighborhoodColor.g, neighborhoodColor.b)) - min(neighborhoodColor.r, min(neighborhoodColor.g, neighborhoodColor.b));
-    float imbalanceCur = (abs(current.r - current.g) + abs(current.g - current.b) + abs(current.b - current.r)) / 3.0;
-    float imbalanceNbr = (abs(neighborhoodColor.r - neighborhoodColor.g) + abs(neighborhoodColor.g - neighborhoodColor.b) + abs(neighborhoodColor.b - neighborhoodColor.r)) / 3.0;
     float hueFlow = fract(hsvNbr0.x - hsvCur0.x + 0.5) - 0.5;
     float satFlow = hsvNbr0.y - hsvCur0.y;
     float lumGrad = neighLum - localLum;
     float chromaGrad = chromaNbr - chromaCur;
-    float lifeCur = clamp(localLum + 0.16 * hsvCur0.y + 0.10 * chromaCur + 0.06 * imbalanceCur, 0.0, 1.0);
+
+    // Color-dependent Life state: different colors = different effective densities.
+    // CENTERED contributions so color changes push lifeCur BOTH directions.
+    float patternCoupling = clamp(u_patternCoupling, 0.0, 1.0);
+    float hueContribCur = sin(hsvCur0.x * 6.2832) * 0.18 * patternCoupling;
+    float satContribCur = (hsvCur0.y - 0.5) * 0.22 * patternCoupling;
+    float hueContribNbr = sin(hsvNbr0.x * 6.2832) * 0.18 * patternCoupling;
+    float satContribNbr = (hsvNbr0.y - 0.5) * 0.22 * patternCoupling;
+
+    float lifeCur = clamp(
+        localLum
+        + hueContribCur
+        + satContribCur
+        + (chromaCur - 0.3) * 0.14 * patternCoupling,
+        0.0, 1.0
+    );
     float lifeNbr = clamp(
         neighLum
-        + 0.16 * hsvNbr0.y
-        + 0.10 * chromaNbr
-        + 0.06 * imbalanceNbr
-        + 0.18 * lumGrad
-        + 0.10 * chromaGrad
-        + 0.08 * hueFlow
-        + 0.06 * satFlow,
+        + hueContribNbr
+        + satContribNbr
+        + (chromaNbr - 0.3) * 0.14 * patternCoupling,
         0.0, 1.0
     );
 
-    // Continuous-GoL target on coupled state.
-    float chaosJitter = (hash(v_texCoord * 180.0 + u_time * 0.35) - 0.5) * 2.0 * u_chaos;
-    float targetLife = lifeTarget(lifeCur, lifeNbr, 0.2, chaosJitter);
-    float lifeRate = clamp((0.03 + u_activity * 2.0) * u_deltaTime, 0.0, 1.0);
+    // Color-dependent GoL phase: different hues see different birth/survival thresholds.
+    // When hazard changes a region's hue, its GoL rules shift, equilibrium breaks,
+    // and topology must reorganize. This is the core coupling mechanism.
+    float colorPhase = hsvCur0.x * 1.5 + hsvCur0.y * 0.5;
+    float timeWobble = sin(u_time * 0.25 + hash(floor(v_texCoord * 40.0)) * 6.2832) * 0.3;
+    float effectivePhase = mix(0.2, colorPhase, patternCoupling) + timeWobble * (0.15 + 0.40 * u_chaos);
+
+    // Spatially coherent chaos jitter from structured noise (not per-pixel hash).
+    // Smooth spatial variation ensures adjacent pixels can land on different sides
+    // of birth/death boundaries, creating persistent evolving GoL patterns.
+    float spatialJitter = (structured.r + structured.g - 1.0);
+    float chaosJitter = spatialJitter * u_chaos;
+    chaosJitter += sin(u_time * 0.3 + v_texCoord.x * 11.0 + v_texCoord.y * 7.0) * u_chaos * 0.2;
+
+    float targetLife = lifeTarget(lifeCur, lifeNbr, effectivePhase, chaosJitter);
+    float colorPressure = (0.55 * lumGrad + 0.75 * chromaGrad + 0.45 * satFlow + 0.35 * hueFlow);
+    float lifeRate = clamp((0.04 + u_activity * 2.5) * u_deltaTime, 0.0, 1.0);
     float newLife = mix(lifeCur, targetLife, lifeRate);
-    // Signed neighborhood feedback keeps high-energy states from collapsing to flat attractors.
-    newLife += (lifeNbr - lifeCur) * (0.02 + 0.24 * u_chaos) * u_deltaTime;
-    newLife += (hash(v_texCoord * 350.0 + u_time * 0.7) - 0.5) * (0.001 + 0.04 * u_chaos) * u_deltaTime;
+    // Stronger signed feedback at high chaos to prevent flat-region lock-in.
+    newLife += (lifeNbr - lifeCur) * (0.06 + 0.35 * u_chaos) * u_deltaTime;
+    newLife += (hash(v_texCoord * 350.0 + u_time * 0.7) - 0.5) * (0.003 + 0.06 * u_chaos) * u_deltaTime;
     newLife = clamp(newLife, 0.0, 1.0);
 
     float growth = newLife - lifeCur;
@@ -466,10 +501,10 @@ void main() {
     vec3 rgbBase = mix(current.rgb, neighborhoodColor, coupling);
     vec3 chromaAxis = current.rgb - vec3(localLum);
     vec3 neighborChromaAxis = neighborhoodColor - vec3(neighLum);
-    rgbBase += chromaAxis * growth * (0.25 + 0.55 * u_activity);
-    rgbBase += neighborChromaAxis * growth * (0.18 + 0.30 * u_activity);
+    rgbBase += chromaAxis * growth * (0.10 + 0.70 * patternCoupling) * (0.35 + 0.65 * u_activity);
+    rgbBase += neighborChromaAxis * growth * (0.08 + 0.46 * patternCoupling) * (0.35 + 0.65 * u_activity);
     vec3 cycleAxis = vec3(current.g, current.b, current.r) - current.rgb;
-    rgbBase += cycleAxis * growth * (0.12 + 0.38 * u_activity);
+    rgbBase += cycleAxis * growth * (0.04 + 0.50 * patternCoupling) * (0.25 + 0.75 * u_activity);
     rgbBase += (neighborhoodColor - current.rgb) * (0.05 + 0.20 * u_activity) * (0.25 + 0.75 * growthAbs);
     vec3 rgbLife = clamp(rgbBase, 0.0, 1.0);
 
@@ -480,9 +515,8 @@ void main() {
 
     // Region signature from edge-aware local source pooling (bounded by section barriers).
     float sectionVal = texture2D(u_edgeTexture, v_texCoord).r;
-    vec3 structured = texture2D(u_structuredNoiseTexture, v_texCoord).rgb;
+    // structured already read above for GoL jitter
     vec3 regionSrc = original.rgb;
-    vec3 regionStruct = structured;
     float seedW = 1.0;
     float seedRadiusPx = mix(3.0, 20.0, u_sectionScale);
     float seedRadiusUv = seedRadiusPx * min(px.x, px.y);
@@ -498,30 +532,17 @@ void main() {
         float e = texture2D(u_edgeTexture, uv).r;
         float w = 1.0 - max(sectionVal, e) * 0.94;
         regionSrc += src * w;
-        regionStruct += texture2D(u_structuredNoiseTexture, uv).rgb * w;
         seedW += w;
     }
     regionSrc /= max(seedW, 1.0);
-    regionStruct /= max(seedW, 1.0);
 
     // Hazard controls pump event frequency (Poisson-like) per region key.
     float hazard = clamp(u_mutation, 0.0, 1.0);
     float stability = clamp(u_paletteStability, 0.0, 1.0);
     float srcAdh = clamp(u_sourceColorAdherence, 0.0, 1.0);
-    vec3 regionHSV = rgb2hsv(clamp(regionSrc, 0.0, 1.0));
-    // Quantized region signature: pooled color/texture + section field.
-    // Avoid UV-grid quantization to prevent arbitrary rectangular partitions.
-    vec2 regionFeat = vec2(
-        floor(regionHSV.x * 9.0) / 9.0
-            + floor(regionHSV.y * 4.0) / 4.0 * 0.37
-            + floor(regionStruct.r * 6.0) / 6.0 * 0.23
-            + floor(sectionVal * 5.0) / 5.0 * 0.19,
-        floor(regionHSV.z * 5.0) / 5.0
-            + floor(regionStruct.g * 6.0) / 6.0 * 0.31
-            + floor(regionStruct.b * 6.0) / 6.0 * 0.27
-            + floor(sectionVal * 5.0) / 5.0 * 0.17
-    );
-    vec2 regionCell = floor(regionFeat * 4096.0);
+    vec4 regionTex = texture2D(u_regionTexture, v_texCoord);
+    float regionId = floor(regionTex.r * 255.0 + 0.5) + floor(regionTex.g * 255.0 + 0.5) * 256.0;
+    vec2 regionCell = vec2(mod(regionId, 251.0), floor(regionId / 251.0));
     float regionPhase = hash(regionCell + vec2(7.0, 19.0));
     float jumpRate = mix(0.02, 3.6, hazard) * mix(0.35, 1.0, 1.0 - stability);
     float tBucket = floor((u_time + regionPhase * 13.0) * jumpRate);
@@ -563,7 +584,14 @@ void main() {
     vec3 hsvOut = rgb2hsv(clamp(rgbPumped, 0.0, 1.0));
     float chromaFloor = mix(0.10, 0.55, (1.0 - srcAdh) * (0.25 + 0.75 * hazard));
     hsvOut.y = max(hsvOut.y, chromaFloor);
-    hsvOut.z = clamp(hsvOut.z, 0.18, 0.96);
+
+    // Couple visible pattern occupancy (dark vs colored regions) to Life state.
+    // newLife already incorporates color-dependent phase + jitter, so topology
+    // naturally tracks color changes via the GoL rules themselves.
+    float patternState = clamp(newLife + (0.25 + 0.50 * patternCoupling) * growth, 0.0, 1.0);
+    float aliveMask = smoothstep(0.38, 0.62, patternState);
+    hsvOut.z = clamp(mix(hsvOut.z, patternState, 0.82), 0.02, 0.98);
+    hsvOut.y *= mix(0.40, 1.0, aliveMask);
     rgbPumped = hsv2rgb(hsvOut);
 
     // Small structured perturbation, bounded and chromatic (avoid monochrome "TV static" feel).

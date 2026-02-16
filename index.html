@@ -69,6 +69,12 @@
                         </label>
                         <small class="hint">Low = split on micro details, High = consolidate micro fragments into bigger sections</small>
 
+                        <label title="Master section detail control: broad cartoon regions to edge-like partitions">
+                            Boundary Simplification: <span id="boundarySimplificationValue">0.35</span>
+                            <input type="range" id="boundarySimplification" min="0" max="1" value="0.35" step="0.01">
+                        </label>
+                        <small class="hint">Left = very few broad boundaries, Right = boundaries approach natural edge map detail</small>
+
                         <label title="Neighborhood width used by the GoL kernel">
                             Kernel Width: <span id="kernelWidthValue">4.5%</span>
                             <input type="range" id="kernelWidth" min="0" max="1" value="0.55" step="0.001">
@@ -104,6 +110,17 @@
                             <input type="range" id="energy" min="0" max="1" value="0.62" step="0.01">
                         </label>
                         <small class="hint">Low = calmer/cleaner dynamics, High = more active and chaotic dynamics</small>
+
+                        <label title="How strongly color gradients reshape Life pattern topology (dark vs colored regions)">
+                            Color-Pattern Coupling: <span id="patternCouplingValue">0.72</span>
+                            <input type="range" id="patternCoupling" min="0" max="1" value="0.72" step="0.01">
+                        </label>
+                        <small class="hint">Low = color mostly follows patterns, High = color and patterns strongly co-drive each other</small>
+
+                        <label title="Display inferred broad section boundaries instead of final color output">
+                            Show Boundary Boxes:
+                            <input type="checkbox" id="showSections">
+                        </label>
                     </div>
 
                     <div class="control-section">
@@ -125,10 +142,6 @@
                                 <input type="range" id="boundaryLeakage" min="0" max="1" value="0.18" step="0.01">
                             </label>
                             <small class="hint">Low = sections stay separate, High = more cross-boundary blending</small>
-                            <label title="Display inferred section boundaries instead of final colors">
-                                Show Sections:
-                                <input type="checkbox" id="showSections">
-                            </label>
                         </details>
                     </div>
 

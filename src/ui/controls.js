@@ -11,12 +11,14 @@ export class ControlsManager {
             edgeFineness: 0.62,
             edgePump: 0.22,
             edgeMerge: 0.72,
+            boundarySimplification: 0.35,
             // Slider position (0..1), mapped logarithmically to actual kernel width
             kernelWidth: 0.55,
             hazardRate: 0.20,
             paletteStability: 0.72,
             simSpeed: 0.32,
             energy: 0.62,
+            patternCoupling: 0.72,
             // Additional essential control (explicit source-color coupling)
             sourceColorAdherence: 0.25,
             // Advanced
@@ -89,11 +91,13 @@ export class ControlsManager {
         setupSlider('edgeFineness', 'edgeFineness');
         setupSlider('edgePump', 'edgePump');
         setupSlider('edgeMerge', 'edgeMerge');
+        setupSlider('boundarySimplification', 'boundarySimplification');
         setupSlider('kernelWidth', 'kernelWidth', true);
         setupSlider('hazardRate', 'hazardRate');
         setupSlider('paletteStability', 'paletteStability');
         setupSlider('simSpeed', 'simSpeed');
         setupSlider('energy', 'energy');
+        setupSlider('patternCoupling', 'patternCoupling');
         setupSlider('sourceColorAdherence', 'sourceColorAdherence');
         // Advanced sliders
         setupSlider('microDetailInfluence', 'microDetailInfluence');
@@ -113,23 +117,28 @@ export class ControlsManager {
         const presets = {
             presetOrganic: {
                 edgeFineness: 0.56, edgePump: 0.22, edgeMerge: 0.64, kernelWidth: 0.666,
-                hazardRate: 0.14, paletteStability: 0.78, simSpeed: 0.28, energy: 0.50, sourceColorAdherence: 0.40, boundaryLeakage: 0.14
+                boundarySimplification: 0.30,
+                hazardRate: 0.14, paletteStability: 0.78, simSpeed: 0.28, energy: 0.50, patternCoupling: 0.68, sourceColorAdherence: 0.40, boundaryLeakage: 0.14
             },
             presetRegional: {
                 edgeFineness: 0.62, edgePump: 0.24, edgeMerge: 0.84, kernelWidth: 0.735,
-                hazardRate: 0.16, paletteStability: 0.82, simSpeed: 0.30, energy: 0.60, sourceColorAdherence: 0.30, boundaryLeakage: 0.10
+                boundarySimplification: 0.50,
+                hazardRate: 0.16, paletteStability: 0.82, simSpeed: 0.30, energy: 0.60, patternCoupling: 0.78, sourceColorAdherence: 0.30, boundaryLeakage: 0.10
             },
             presetDreamy: {
                 edgeFineness: 0.48, edgePump: 0.16, edgeMerge: 0.70, kernelWidth: 0.752,
-                hazardRate: 0.26, paletteStability: 0.70, simSpeed: 0.24, energy: 0.42, sourceColorAdherence: 0.12, boundaryLeakage: 0.24
+                boundarySimplification: 0.26,
+                hazardRate: 0.26, paletteStability: 0.70, simSpeed: 0.24, energy: 0.42, patternCoupling: 0.56, sourceColorAdherence: 0.12, boundaryLeakage: 0.24
             },
             presetWild: {
                 edgeFineness: 0.74, edgePump: 0.10, edgeMerge: 0.58, kernelWidth: 0.693,
-                hazardRate: 0.72, paletteStability: 0.28, simSpeed: 0.36, energy: 0.88, sourceColorAdherence: 0.02, boundaryLeakage: 0.30
+                boundarySimplification: 0.80,
+                hazardRate: 0.72, paletteStability: 0.28, simSpeed: 0.36, energy: 0.88, patternCoupling: 0.92, sourceColorAdherence: 0.02, boundaryLeakage: 0.30
             },
             presetSourceMemory: {
                 edgeFineness: 0.68, edgePump: 0.40, edgeMerge: 0.78, kernelWidth: 0.715,
-                hazardRate: 0.10, paletteStability: 0.86, simSpeed: 0.30, energy: 0.48, sourceColorAdherence: 0.80, boundaryLeakage: 0.12
+                boundarySimplification: 0.40,
+                hazardRate: 0.10, paletteStability: 0.86, simSpeed: 0.30, energy: 0.48, patternCoupling: 0.46, sourceColorAdherence: 0.80, boundaryLeakage: 0.12
             }
         };
 
@@ -153,11 +162,13 @@ export class ControlsManager {
                 updateSliderUI('edgeFineness', this.params.edgeFineness);
                 updateSliderUI('edgePump', this.params.edgePump);
                 updateSliderUI('edgeMerge', this.params.edgeMerge);
+                updateSliderUI('boundarySimplification', this.params.boundarySimplification);
                 updateSliderUI('kernelWidth', this.params.kernelWidth, true);
                 updateSliderUI('hazardRate', this.params.hazardRate);
                 updateSliderUI('paletteStability', this.params.paletteStability);
                 updateSliderUI('simSpeed', this.params.simSpeed);
                 updateSliderUI('energy', this.params.energy);
+                updateSliderUI('patternCoupling', this.params.patternCoupling);
                 updateSliderUI('sourceColorAdherence', this.params.sourceColorAdherence);
                 updateSliderUI('microDetailInfluence', this.params.microDetailInfluence);
                 updateSliderUI('noisePersistence', this.params.noisePersistence);
@@ -257,6 +268,10 @@ export class ControlsManager {
         const imagePump = 0.0; // source pull handled by sourceColorAdherence + explicit pump controls
         const edgePump = this.params.edgePump;
 
+        // Explicit master control for broad-vs-detailed boundaries
+        const bs = this.params.boundarySimplification;
+        const sectionizerSimplification = Math.max(0.0, Math.min(1.0, bs));
+
         return {
             activity,
             chaos,
@@ -270,6 +285,7 @@ export class ControlsManager {
             imagePump,
             imageRestore: imagePump,
             edgeDetail: this.params.edgeFineness,
+            sectionizerSimplification,
             edgeSensitivity: this.params.edgeFineness,
             edgePump,
             edgeConfinement,
@@ -283,6 +299,7 @@ export class ControlsManager {
             hazardRate: this.params.hazardRate,
             paletteStability: this.params.paletteStability,
             boundaryLeakage: this.params.boundaryLeakage,
+            patternCoupling: this.params.patternCoupling,
             showSections: this.params.showSections
         };
     }

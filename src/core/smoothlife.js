@@ -11,6 +11,7 @@ import {
     structuredNoiseUpdateShader,
     sectionMapShader
 } from '../render/shaders.js';
+import { createSectionHierarchy, getSectionTexturesFromHierarchy } from './sectionizer.js';
 import { 
     createShader, 
     createProgram, 
@@ -101,6 +102,8 @@ export class SmoothLifeEngine {
         this.noiseTexture0 = createTexture(gl, this.width, this.height);
         this.noiseTexture1 = createTexture(gl, this.width, this.height);
         this.sectionTexture = createTexture(gl, this.width, this.height);
+        this.regionTexture = createTexture(gl, this.width, this.height);
+        this.sectionDebugTexture = createTexture(gl, this.width, this.height);
         
         // Create framebuffers
         this.edgeFramebuffer = createFramebuffer(gl, this.edgeTexture);
@@ -140,24 +143,35 @@ export class SmoothLifeEngine {
     }
 
     computeSections(params = {}) {
+        // CPU sectionization to produce broad cartoon-like regions + soft boundaries.
+        const edgeDetail = params.edgeDetail ?? 0.62;
+        const simplification = params.sectionizerSimplification ?? 0.35;
+        const boundaryLeakage = params.boundaryLeakage ?? 0.18;
+        const hierarchySig = `${edgeDetail.toFixed(3)}`;
+        if (!this.sectionHierarchy || this._sectionHierarchySignature !== hierarchySig) {
+            this.sectionHierarchy = createSectionHierarchy(
+                this.originalImageData,
+                this.width,
+                this.height,
+                { edgeDetail }
+            );
+            this._sectionHierarchySignature = hierarchySig;
+        }
+        const levelSig = `${simplification.toFixed(3)}|${boundaryLeakage.toFixed(3)}`;
+        if (this._sectionLevelSignature === levelSig) return;
+        this._sectionLevelSignature = levelSig;
+        const { regionData, boundaryData, debugData } = getSectionTexturesFromHierarchy(this.sectionHierarchy, {
+            simplification,
+            boundaryLeakage
+        });
+
         const gl = this.gl;
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.sectionFramebuffer);
-        gl.useProgram(this.sectionProgram);
-
-        gl.uniform2f(gl.getUniformLocation(this.sectionProgram, 'u_resolution'), this.width, this.height);
-        gl.uniform1f(gl.getUniformLocation(this.sectionProgram, 'u_sectionScale'), params.sectionScale ?? 0.68);
-        gl.uniform1f(gl.getUniformLocation(this.sectionProgram, 'u_sectionClosure'), params.sectionClosure ?? 0.72);
-        gl.uniform1f(gl.getUniformLocation(this.sectionProgram, 'u_sectionStrictness'), params.sectionStrictness ?? 0.70);
-        gl.uniform1f(gl.getUniformLocation(this.sectionProgram, 'u_microDetailInfluence'), params.microDetailInfluence ?? 0.22);
-        gl.uniform1f(gl.getUniformLocation(this.sectionProgram, 'u_tileSize'), params.tileSize ?? 0.66);
-        gl.uniform1f(gl.getUniformLocation(this.sectionProgram, 'u_edgeAdherence'), params.edgeAdherence ?? 0.45);
-
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.edgeTexture);
-        gl.uniform1i(gl.getUniformLocation(this.sectionProgram, 'u_edgeTexture'), 0);
-
-        bindQuadAttributes(gl, this.sectionQuad);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindTexture(gl.TEXTURE_2D, this.sectionTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, boundaryData);
+        gl.bindTexture(gl.TEXTURE_2D, this.regionTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, regionData);
+        gl.bindTexture(gl.TEXTURE_2D, this.sectionDebugTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, debugData);
     }
     
     reset() {
@@ -264,6 +278,7 @@ export class SmoothLifeEngine {
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_tileSize'), params.tileSize ?? 0.66);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_edgeAdherence'), params.edgeAdherence ?? 0.45);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_sourceColorAdherence'), params.sourceColorAdherence ?? 0.35);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_patternCoupling'), params.patternCoupling ?? 0.72);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_deltaTime'), params.deltaTime);
         
         gl.activeTexture(gl.TEXTURE0);
@@ -284,6 +299,9 @@ export class SmoothLifeEngine {
         gl.activeTexture(gl.TEXTURE4);
         gl.bindTexture(gl.TEXTURE_2D, currentNoiseTexture);
         gl.uniform1i(gl.getUniformLocation(this.transitionProgram, 'u_structuredNoiseTexture'), 4);
+        gl.activeTexture(gl.TEXTURE5);
+        gl.bindTexture(gl.TEXTURE_2D, this.regionTexture);
+        gl.uniform1i(gl.getUniformLocation(this.transitionProgram, 'u_regionTexture'), 5);
         
         bindQuadAttributes(gl, this.transQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -296,7 +314,7 @@ export class SmoothLifeEngine {
     render() {
         const gl = this.gl;
         const currentTexture = this.currentStateIndex === 0 ? this.stateTexture0 : this.stateTexture1;
-        const displayTexture = this.lastParams && this.lastParams.showSections ? this.sectionTexture : currentTexture;
+        const displayTexture = this.lastParams && this.lastParams.showSections ? this.sectionDebugTexture : currentTexture;
         
         // Render to canvas
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -331,6 +349,8 @@ export class SmoothLifeEngine {
         gl.deleteTexture(this.noiseTexture0);
         gl.deleteTexture(this.noiseTexture1);
         gl.deleteTexture(this.sectionTexture);
+        gl.deleteTexture(this.regionTexture);
+        gl.deleteTexture(this.sectionDebugTexture);
         
         gl.deleteFramebuffer(this.edgeFramebuffer);
         gl.deleteFramebuffer(this.convolutionFramebuffer);
