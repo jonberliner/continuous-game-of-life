@@ -187,10 +187,12 @@ class ContinuousGameOfLife {
         
         if (!this.isPaused) {
             const params = this.controls.getParams();
-            // Interpret slider as simulation rate, not simulation dt.
-            // This keeps behavior stable while changing how fast time advances.
-            const speedNorm = Math.max(0, Math.min(1, (params.deltaTime - 0.01) / 0.49));
-            const simRate = 0.08 + speedNorm * 3.2; // ~0.08 to ~3.28 sim steps per frame
+            // Logarithmic time scale: slider [0,1] maps to simRate via 10^(s*3.3 - 2)
+            //   0.00 → 0.01 steps/frame  (1 step every ~2s at 60fps — watch individual steps)
+            //   0.50 → ~0.45 steps/frame  (~27 steps/sec — slow contemplation)
+            //   0.65 → ~1.4  steps/frame  (~84 steps/sec — current default feel)
+            //   1.00 → ~20   steps/frame  (~1200 steps/sec — 10x current max)
+            const simRate = Math.pow(10, params.deltaTime * 3.3 - 2.0);
             this.simAccumulator += simRate;
 
             const stepParams = {
@@ -199,7 +201,7 @@ class ContinuousGameOfLife {
             };
 
             let steps = 0;
-            const maxStepsPerFrame = 8;
+            const maxStepsPerFrame = 20;
             while (this.simAccumulator >= 1.0 && steps < maxStepsPerFrame) {
                 this.engine.step(stepParams);
                 this.simAccumulator -= 1.0;

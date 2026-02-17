@@ -29,6 +29,22 @@
                     </div>
 
                     <div class="control-section">
+                        <h3>Configurations</h3>
+                        <div class="config-save-row">
+                            <input type="text" id="configName" placeholder="Name this config..." class="config-input">
+                            <button id="saveConfigBtn">Save</button>
+                        </div>
+                        <div class="config-actions">
+                            <button id="exportConfigBtn" class="config-btn-sm">Export JSON</button>
+                            <label class="config-btn-sm import-label">
+                                Import JSON
+                                <input type="file" id="importConfig" accept=".json" style="display:none">
+                            </label>
+                        </div>
+                        <div id="savedConfigsList" class="saved-configs-list"></div>
+                    </div>
+
+                    <div class="control-section">
                         <h3>Mode</h3>
                         <div class="mode-buttons">
                             <button id="spatialMode" class="mode-btn active">🔲 Spatial</button>
@@ -51,29 +67,18 @@
 
                     <div class="control-section">
                         <h3>Core Controls</h3>
-                        <label title="How finely the edge detector captures boundary detail">
-                            Edge Fineness: <span id="edgeFinenessValue">0.62</span>
-                            <input type="range" id="edgeFineness" min="0" max="1" value="0.62" step="0.01">
-                        </label>
-                        <small class="hint">Low = only major boundaries, High = finer edge detail</small>
 
-                        <label title="How strongly boundaries re-imprint source structure near edges">
-                            Edge Pump: <span id="edgePumpValue">0.22</span>
-                            <input type="range" id="edgePump" min="0" max="1" value="0.22" step="0.01">
-                        </label>
-                        <small class="hint">Low = edges only constrain flow, High = stronger edge anchoring</small>
-
-                        <label title="Merge dense tiny edge chatter into larger coherent sections">
-                            Edge Merge: <span id="edgeMergeValue">0.72</span>
-                            <input type="range" id="edgeMerge" min="0" max="1" value="0.72" step="0.01">
-                        </label>
-                        <small class="hint">Low = split on micro details, High = consolidate micro fragments into bigger sections</small>
-
-                        <label title="Master section detail control: broad cartoon regions to edge-like partitions">
+                        <label title="How many/few region boundaries exist: broad cartoon zones to fine edge-like partitions">
                             Boundary Simplification: <span id="boundarySimplificationValue">0.35</span>
                             <input type="range" id="boundarySimplification" min="0" max="1" value="0.35" step="0.01">
                         </label>
-                        <small class="hint">Left = very few broad boundaries, Right = boundaries approach natural edge map detail</small>
+                        <small class="hint">Left = very few broad boundaries, Right = finer region detail</small>
+
+                        <label title="How strongly boundaries persist. Low = erode away, High = clear unbroken boundaries">
+                            Boundary Strength: <span id="boundaryStrengthValue">0.70</span>
+                            <input type="range" id="boundaryStrength" min="0" max="1" value="0.70" step="0.01">
+                        </label>
+                        <small class="hint">0 = boundaries fully erode, 100% = strong persistent boundaries</small>
 
                         <label title="Neighborhood width used by the GoL kernel">
                             Kernel Width: <span id="kernelWidthValue">4.5%</span>
@@ -87,67 +92,55 @@
                         </label>
                         <small class="hint">Low = stable section colors, High = more frequent discrete color jumps</small>
 
-                        <label title="How long each section keeps a chosen color before changing">
-                            Palette Stability: <span id="paletteStabilityValue">0.72</span>
-                            <input type="range" id="paletteStability" min="0" max="1" value="0.72" step="0.01">
-                        </label>
-                        <small class="hint">Low = frequent palette shifts, High = longer-lived section colors</small>
-
                         <label title="How strongly colors should adhere to source palette">
                             Source Color Adherence: <span id="sourceColorAdherenceValue">0.25</span>
                             <input type="range" id="sourceColorAdherence" min="0" max="1" value="0.25" step="0.01">
                         </label>
-                        <small class="hint">Low = boundary-only source influence, High = source-like colors</small>
+                        <small class="hint">Low = free color evolution, High = source-like colors</small>
 
-                        <label title="Simulation speed only (does not alter rule equations)">
-                            Simulation Speed: <span id="simSpeedValue">0.32</span>
-                            <input type="range" id="simSpeed" min="0.01" max="0.5" value="0.32" step="0.01">
+                        <label title="How much local color uniformity drives pattern instability. Uniform colors breed new patterns, creating a breathing cycle">
+                            Color Feedback: <span id="colorFeedbackValue">0.50</span>
+                            <input type="range" id="colorFeedback" min="0" max="1" value="0.50" step="0.01">
                         </label>
-                        <small class="hint">Low = slower evolution in real time, High = faster evolution</small>
+                        <small class="hint">0 = patterns ignore color | 100% = uniform colors destabilize patterns, driving breathing evolution</small>
+
+                        <label title="How much colors resist change between wavefront events. High = coherent color blocks that shift only at wavefronts">
+                            Color Inertia: <span id="colorInertiaValue">0.30</span>
+                            <input type="range" id="colorInertia" min="0" max="1" value="0.30" step="0.01">
+                        </label>
+                        <small class="hint">0 = colors shimmer freely | 100% = only major wavefronts shift colors (coherent blocks)</small>
+
+                        <label title="GoL activity rotates the source color anchor — active areas evolve their reference point, creating a feedback loop">
+                            Source Drift: <span id="sourceDriftValue">0.00</span>
+                            <input type="range" id="sourceDrift" min="0" max="1" value="0.00" step="0.01">
+                        </label>
+                        <small class="hint">0 = static source memory | High = wavefronts shift what "source" means, creating perpetual evolution</small>
+
+                        <label title="Simulation speed (logarithmic). Far left = watch single steps, far right = very fast">
+                            Simulation Speed: <span id="simSpeedValue">0.65</span>
+                            <input type="range" id="simSpeed" min="0" max="1" value="0.65" step="0.01">
+                        </label>
+                        <small class="hint">Logarithmic: far left = single timesteps, far right = 10× fast</small>
 
                         <label title="Overall liveliness: motion speed and unpredictability together">
                             Evolution Energy: <span id="energyValue">0.62</span>
                             <input type="range" id="energy" min="0" max="1" value="0.62" step="0.01">
                         </label>
-                        <small class="hint">Low = calmer/cleaner dynamics, High = more active and chaotic dynamics</small>
+                        <small class="hint">Low = calmer/cleaner dynamics, High = more active and chaotic</small>
 
-                        <label title="How strongly color gradients reshape Life pattern topology (dark vs colored regions)">
-                            Color-Pattern Coupling: <span id="patternCouplingValue">0.72</span>
-                            <input type="range" id="patternCoupling" min="0" max="1" value="0.72" step="0.01">
-                        </label>
-                        <small class="hint">Low = color mostly follows patterns, High = color and patterns strongly co-drive each other</small>
-
-                        <label title="Display inferred broad section boundaries instead of final color output">
-                            Show Boundary Boxes:
+                        <label title="Display the living boundary field instead of final color output">
+                            Show Boundaries:
                             <input type="checkbox" id="showSections">
                         </label>
                     </div>
 
                     <div class="control-section">
-                        <h3>Advanced (Optional)</h3>
+                        <h3>Rule Parameters (Advanced)</h3>
                         <details>
-                            <summary>Show advanced controls</summary>
-                            <label title="How much tiny details split sections">
-                                Micro Detail Influence: <span id="microDetailInfluenceValue">0.22</span>
-                                <input type="range" id="microDetailInfluence" min="0" max="1" value="0.22" step="0.01">
-                            </label>
-                            <small class="hint">Low = smoother macro sections, High = tiny separators preserved</small>
-                            <label title="How stable each section's texture identity stays over time">
-                                Texture Persistence: <span id="noisePersistenceValue">0.82</span>
-                                <input type="range" id="noisePersistence" min="0" max="1" value="0.82" step="0.01">
-                            </label>
-                            <small class="hint">Low = constantly changing texture, High = longer-lived section texture identity</small>
-                            <label title="How much neighboring sections are allowed to bleed into each other">
-                                Boundary Leakage: <span id="boundaryLeakageValue">0.18</span>
-                                <input type="range" id="boundaryLeakage" min="0" max="1" value="0.18" step="0.01">
-                            </label>
-                            <small class="hint">Low = sections stay separate, High = more cross-boundary blending</small>
+                            <summary>Show all internal parameters</summary>
+                            <p class="hint" style="margin-top:8px; margin-bottom:12px;">Every tunable coefficient in the SmoothLife rules, color dynamics, convolution, boundary evolution, and output assembly. Organized by subsystem.</p>
+                            <div id="ruleParamsContainer"></div>
                         </details>
-                    </div>
-
-                    <div class="control-section">
-                        <button id="resetBtn">Reset</button>
-                        <button id="pauseBtn">Pause</button>
                     </div>
 
                 </div>

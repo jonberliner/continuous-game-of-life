@@ -2,31 +2,33 @@
  * UI Controls management - Artist-friendly parameters
  */
 
+import { TUNABLE_PARAMS } from './tunableParams.js';
+
 export class ControlsManager {
     constructor(onParamChange, onImageUpload, onPause, onReset, onModeSwitch) {
         this.kernelWidthMin = 0.001;
         this.kernelWidthMax = 1.0;
         this.params = {
-            // Requested core sliders
-            edgeFineness: 0.62,
-            edgePump: 0.22,
-            edgeMerge: 0.72,
+            // Core sliders
             boundarySimplification: 0.35,
-            // Slider position (0..1), mapped logarithmically to actual kernel width
+            boundaryStrength: 0.70,
             kernelWidth: 0.55,
             hazardRate: 0.20,
-            paletteStability: 0.72,
-            simSpeed: 0.32,
+            simSpeed: 0.65,
             energy: 0.62,
-            patternCoupling: 0.72,
-            // Additional essential control (explicit source-color coupling)
             sourceColorAdherence: 0.25,
-            // Advanced
-            microDetailInfluence: 0.22,
-            noisePersistence: 0.82,
-            boundaryLeakage: 0.18,
+            colorFeedback: 0.50,
+            colorInertia: 0.30,
+            sourceDrift: 0.00,
             showSections: false
         };
+
+        // Populate defaults from tunable params definitions
+        for (const p of TUNABLE_PARAMS) {
+            if (!(p.key in this.params)) {
+                this.params[p.key] = p.default;
+            }
+        }
         
         this.callbacks = {
             onParamChange,
@@ -46,7 +48,6 @@ export class ControlsManager {
     }
     
     initControls() {
-        // Helper to setup a slider with value display
         const setupSlider = (id, paramName, isPercentage = false) => {
             const slider = document.getElementById(id);
             const valueDisplay = document.getElementById(`${id}Value`);
@@ -60,7 +61,6 @@ export class ControlsManager {
                 const value = parseFloat(e.target.value);
                 this.params[paramName] = value;
                 
-                // Format display based on whether it's a percentage
                 if (isPercentage) {
                     if (id === 'kernelWidth') {
                         valueDisplay.textContent = (this.kernelWidthFromSlider(value) * 100).toFixed(1) + '%';
@@ -87,22 +87,17 @@ export class ControlsManager {
             }
         };
         
-        // Core sliders
-        setupSlider('edgeFineness', 'edgeFineness');
-        setupSlider('edgePump', 'edgePump');
-        setupSlider('edgeMerge', 'edgeMerge');
+        // Core sliders (Color Flow and Palette Stability removed from main UI)
         setupSlider('boundarySimplification', 'boundarySimplification');
+        setupSlider('boundaryStrength', 'boundaryStrength');
         setupSlider('kernelWidth', 'kernelWidth', true);
         setupSlider('hazardRate', 'hazardRate');
-        setupSlider('paletteStability', 'paletteStability');
         setupSlider('simSpeed', 'simSpeed');
         setupSlider('energy', 'energy');
-        setupSlider('patternCoupling', 'patternCoupling');
         setupSlider('sourceColorAdherence', 'sourceColorAdherence');
-        // Advanced sliders
-        setupSlider('microDetailInfluence', 'microDetailInfluence');
-        setupSlider('noisePersistence', 'noisePersistence');
-        setupSlider('boundaryLeakage', 'boundaryLeakage');
+        setupSlider('colorFeedback', 'colorFeedback');
+        setupSlider('colorInertia', 'colorInertia');
+        setupSlider('sourceDrift', 'sourceDrift');
 
         const showSections = document.getElementById('showSections');
         if (showSections) {
@@ -113,32 +108,43 @@ export class ControlsManager {
             });
         }
 
+        // Generate all tunable parameter sliders in the advanced section
+        this.generateTunableUI();
+
+        // Configurations: save/load/export/import
+        this.initConfigurationUI();
+
         // Presets
         const presets = {
             presetOrganic: {
-                edgeFineness: 0.56, edgePump: 0.22, edgeMerge: 0.64, kernelWidth: 0.666,
-                boundarySimplification: 0.30,
-                hazardRate: 0.14, paletteStability: 0.78, simSpeed: 0.28, energy: 0.50, patternCoupling: 0.68, sourceColorAdherence: 0.40, boundaryLeakage: 0.14
+                boundarySimplification: 0.30, boundaryStrength: 0.72, kernelWidth: 0.666,
+                hazardRate: 0.14, simSpeed: 0.60, energy: 0.50, colorFeedback: 0.45,
+                colorInertia: 0.35, sourceDrift: 0.15,
+                sourceColorAdherence: 0.40, patternCoupling: 0.68, paletteStability: 0.78
             },
             presetRegional: {
-                edgeFineness: 0.62, edgePump: 0.24, edgeMerge: 0.84, kernelWidth: 0.735,
-                boundarySimplification: 0.50,
-                hazardRate: 0.16, paletteStability: 0.82, simSpeed: 0.30, energy: 0.60, patternCoupling: 0.78, sourceColorAdherence: 0.30, boundaryLeakage: 0.10
+                boundarySimplification: 0.50, boundaryStrength: 0.82, kernelWidth: 0.735,
+                hazardRate: 0.16, simSpeed: 0.63, energy: 0.60, colorFeedback: 0.55,
+                colorInertia: 0.25, sourceDrift: 0.10,
+                sourceColorAdherence: 0.30, patternCoupling: 0.78, paletteStability: 0.82
             },
             presetDreamy: {
-                edgeFineness: 0.48, edgePump: 0.16, edgeMerge: 0.70, kernelWidth: 0.752,
-                boundarySimplification: 0.26,
-                hazardRate: 0.26, paletteStability: 0.70, simSpeed: 0.24, energy: 0.42, patternCoupling: 0.56, sourceColorAdherence: 0.12, boundaryLeakage: 0.24
+                boundarySimplification: 0.26, boundaryStrength: 0.50, kernelWidth: 0.752,
+                hazardRate: 0.26, simSpeed: 0.55, energy: 0.42, colorFeedback: 0.60,
+                colorInertia: 0.45, sourceDrift: 0.30,
+                sourceColorAdherence: 0.12, patternCoupling: 0.56, paletteStability: 0.70
             },
             presetWild: {
-                edgeFineness: 0.74, edgePump: 0.10, edgeMerge: 0.58, kernelWidth: 0.693,
-                boundarySimplification: 0.80,
-                hazardRate: 0.72, paletteStability: 0.28, simSpeed: 0.36, energy: 0.88, patternCoupling: 0.92, sourceColorAdherence: 0.02, boundaryLeakage: 0.30
+                boundarySimplification: 0.80, boundaryStrength: 0.25, kernelWidth: 0.693,
+                hazardRate: 0.72, simSpeed: 0.72, energy: 0.88, colorFeedback: 0.70,
+                colorInertia: 0.10, sourceDrift: 0.50,
+                sourceColorAdherence: 0.02, patternCoupling: 0.92, paletteStability: 0.28
             },
             presetSourceMemory: {
-                edgeFineness: 0.68, edgePump: 0.40, edgeMerge: 0.78, kernelWidth: 0.715,
-                boundarySimplification: 0.40,
-                hazardRate: 0.10, paletteStability: 0.86, simSpeed: 0.30, energy: 0.48, patternCoupling: 0.46, sourceColorAdherence: 0.80, boundaryLeakage: 0.12
+                boundarySimplification: 0.40, boundaryStrength: 0.85, kernelWidth: 0.715,
+                hazardRate: 0.10, simSpeed: 0.63, energy: 0.48, colorFeedback: 0.50,
+                colorInertia: 0.40, sourceDrift: 0.05,
+                sourceColorAdherence: 0.80, patternCoupling: 0.46, paletteStability: 0.86
             }
         };
 
@@ -159,20 +165,20 @@ export class ControlsManager {
             if (!btn) return;
             btn.addEventListener('click', () => {
                 Object.assign(this.params, presets[presetId]);
-                updateSliderUI('edgeFineness', this.params.edgeFineness);
-                updateSliderUI('edgePump', this.params.edgePump);
-                updateSliderUI('edgeMerge', this.params.edgeMerge);
+                // Update core sliders
                 updateSliderUI('boundarySimplification', this.params.boundarySimplification);
+                updateSliderUI('boundaryStrength', this.params.boundaryStrength);
                 updateSliderUI('kernelWidth', this.params.kernelWidth, true);
                 updateSliderUI('hazardRate', this.params.hazardRate);
-                updateSliderUI('paletteStability', this.params.paletteStability);
                 updateSliderUI('simSpeed', this.params.simSpeed);
                 updateSliderUI('energy', this.params.energy);
-                updateSliderUI('patternCoupling', this.params.patternCoupling);
                 updateSliderUI('sourceColorAdherence', this.params.sourceColorAdherence);
-                updateSliderUI('microDetailInfluence', this.params.microDetailInfluence);
-                updateSliderUI('noisePersistence', this.params.noisePersistence);
-                updateSliderUI('boundaryLeakage', this.params.boundaryLeakage);
+                updateSliderUI('colorFeedback', this.params.colorFeedback);
+                updateSliderUI('colorInertia', this.params.colorInertia);
+                updateSliderUI('sourceDrift', this.params.sourceDrift);
+                // Also update the advanced sliders that presets touch
+                this.updateTunableSlider('patternCoupling', this.params.patternCoupling);
+                this.updateTunableSlider('paletteStability', this.params.paletteStability);
                 const showSectionsCb = document.getElementById('showSections');
                 if (showSectionsCb) showSectionsCb.checked = !!this.params.showSections;
                 this.callbacks.onParamChange(this.getParams());
@@ -224,13 +230,311 @@ export class ControlsManager {
             });
         }
     }
-    
-    initPresets() {
-        // Removed presets for simplicity - just have reset button
+
+    /** Dynamically generate slider UI for all tunable params, grouped by category */
+    generateTunableUI() {
+        const container = document.getElementById('ruleParamsContainer');
+        if (!container) return;
+
+        // Group params by group name (preserving insertion order)
+        const groups = new Map();
+        for (const p of TUNABLE_PARAMS) {
+            if (!groups.has(p.group)) groups.set(p.group, []);
+            groups.get(p.group).push(p);
+        }
+
+        for (const [groupName, params] of groups) {
+            const details = document.createElement('details');
+            const summary = document.createElement('summary');
+            summary.textContent = groupName;
+            details.appendChild(summary);
+
+            for (const p of params) {
+                const label = document.createElement('label');
+                label.title = p.hint;
+
+                const nameText = document.createTextNode(`${p.label}: `);
+                label.appendChild(nameText);
+
+                const span = document.createElement('span');
+                span.id = `${p.key}Value`;
+                span.textContent = this.formatParamValue(p.key, this.params[p.key]);
+                label.appendChild(span);
+
+                const input = document.createElement('input');
+                input.type = 'range';
+                input.id = p.key;
+                input.min = p.min;
+                input.max = p.max;
+                input.value = this.params[p.key];
+                input.step = p.step;
+                label.appendChild(input);
+
+                const hint = document.createElement('small');
+                hint.className = 'hint';
+                hint.textContent = p.hint;
+
+                details.appendChild(label);
+                details.appendChild(hint);
+
+                // Wire up event
+                input.addEventListener('input', (e) => {
+                    const value = parseFloat(e.target.value);
+                    this.params[p.key] = value;
+                    span.textContent = this.formatParamValue(p.key, value);
+                    this.callbacks.onParamChange(this.getParams());
+                });
+            }
+
+            container.appendChild(details);
+        }
+    }
+
+    /** Format a tunable param value for display */
+    formatParamValue(key, value) {
+        if (value === undefined || value === null) return '?';
+        // Use enough precision to distinguish step sizes
+        if (Math.abs(value) < 0.01 && value !== 0) return value.toFixed(4);
+        if (Math.abs(value) < 1) return value.toFixed(3);
+        return value.toFixed(2);
+    }
+
+    /** Update a generated tunable slider's UI (used by presets) */
+    updateTunableSlider(key, value) {
+        const slider = document.getElementById(key);
+        const display = document.getElementById(`${key}Value`);
+        if (slider) slider.value = value;
+        if (display) display.textContent = this.formatParamValue(key, value);
     }
     
-    applyPreset(preset) {
-        // Removed presets
+    initPresets() {}
+    
+    applyPreset(preset) {}
+
+    // ================================================================
+    //  CONFIGURATION: Save / Load / Export / Import
+    // ================================================================
+
+    static STORAGE_KEY = 'smoothlife_saved_configs';
+
+    initConfigurationUI() {
+        // Save button
+        const saveBtn = document.getElementById('saveConfigBtn');
+        const nameInput = document.getElementById('configName');
+        if (saveBtn && nameInput) {
+            saveBtn.addEventListener('click', () => {
+                const name = nameInput.value.trim();
+                if (!name) {
+                    nameInput.focus();
+                    nameInput.style.borderColor = '#ff5050';
+                    setTimeout(() => { nameInput.style.borderColor = ''; }, 1200);
+                    return;
+                }
+                this.saveConfiguration(name);
+                nameInput.value = '';
+            });
+            nameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') saveBtn.click();
+            });
+        }
+
+        // Export button
+        const exportBtn = document.getElementById('exportConfigBtn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => this.exportConfiguration());
+        }
+
+        // Import file input
+        const importInput = document.getElementById('importConfig');
+        if (importInput) {
+            importInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) this.importConfiguration(file);
+                importInput.value = ''; // allow re-import of same file
+            });
+        }
+
+        // Render any existing saved configs
+        this.renderSavedConfigs();
+    }
+
+    /** Save current params to localStorage under the given name */
+    saveConfiguration(name) {
+        const configs = this._loadAllConfigs();
+        // Overwrite if same name exists
+        const existing = configs.findIndex(c => c.name === name);
+        const entry = {
+            name,
+            timestamp: new Date().toISOString(),
+            params: { ...this.params }
+        };
+        if (existing >= 0) {
+            configs[existing] = entry;
+        } else {
+            configs.unshift(entry); // newest first
+        }
+        this._saveAllConfigs(configs);
+        this.renderSavedConfigs();
+    }
+
+    /** Load a saved configuration by name */
+    loadConfigurationByName(name) {
+        const configs = this._loadAllConfigs();
+        const config = configs.find(c => c.name === name);
+        if (!config) return;
+        this.loadAllParams(config.params);
+    }
+
+    /** Delete a saved configuration by name */
+    deleteConfiguration(name) {
+        const configs = this._loadAllConfigs().filter(c => c.name !== name);
+        this._saveAllConfigs(configs);
+        this.renderSavedConfigs();
+    }
+
+    /** Export current params as a downloaded JSON file */
+    exportConfiguration() {
+        const data = {
+            name: 'SmoothLife Configuration',
+            version: 1,
+            timestamp: new Date().toISOString(),
+            params: { ...this.params }
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `smoothlife-config-${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    /** Import a configuration from a JSON file */
+    importConfiguration(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                if (!data.params || typeof data.params !== 'object') {
+                    alert('Invalid configuration file: missing params object.');
+                    return;
+                }
+                this.loadAllParams(data.params);
+            } catch (err) {
+                alert('Failed to parse configuration file: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    /** Apply a full params object: update internal state, all sliders, and trigger callback */
+    loadAllParams(params) {
+        // Merge loaded params into this.params (preserving any new keys not in the saved config)
+        for (const [key, value] of Object.entries(params)) {
+            if (typeof value === 'boolean' || typeof value === 'number') {
+                this.params[key] = value;
+            }
+        }
+
+        // Update core sliders
+        const coreSliders = [
+            { id: 'boundarySimplification', key: 'boundarySimplification', pct: false },
+            { id: 'boundaryStrength', key: 'boundaryStrength', pct: false },
+            { id: 'kernelWidth', key: 'kernelWidth', pct: true },
+            { id: 'hazardRate', key: 'hazardRate', pct: false },
+            { id: 'simSpeed', key: 'simSpeed', pct: false },
+            { id: 'energy', key: 'energy', pct: false },
+            { id: 'sourceColorAdherence', key: 'sourceColorAdherence', pct: false },
+            { id: 'colorFeedback', key: 'colorFeedback', pct: false },
+            { id: 'colorInertia', key: 'colorInertia', pct: false },
+            { id: 'sourceDrift', key: 'sourceDrift', pct: false }
+        ];
+        for (const { id, key, pct } of coreSliders) {
+            const slider = document.getElementById(id);
+            const display = document.getElementById(`${id}Value`);
+            if (!slider || !display) continue;
+            const value = this.params[key];
+            if (value === undefined) continue;
+            slider.value = value;
+            if (pct && id === 'kernelWidth') {
+                display.textContent = `${(this.kernelWidthFromSlider(value) * 100).toFixed(1)}%`;
+            } else if (pct) {
+                display.textContent = `${(value * 100).toFixed(1)}%`;
+            } else {
+                display.textContent = value.toFixed(2);
+            }
+        }
+
+        // Update checkbox
+        const showSectionsCb = document.getElementById('showSections');
+        if (showSectionsCb) showSectionsCb.checked = !!this.params.showSections;
+
+        // Update all tunable param sliders
+        for (const p of TUNABLE_PARAMS) {
+            this.updateTunableSlider(p.key, this.params[p.key] ?? p.default);
+        }
+
+        // Trigger update
+        this.callbacks.onParamChange(this.getParams());
+    }
+
+    /** Render the saved configurations list */
+    renderSavedConfigs() {
+        const list = document.getElementById('savedConfigsList');
+        if (!list) return;
+        list.innerHTML = '';
+
+        const configs = this._loadAllConfigs();
+        for (const config of configs) {
+            const item = document.createElement('div');
+            item.className = 'saved-config-item';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'config-item-name';
+            nameSpan.textContent = config.name;
+            nameSpan.title = `Saved: ${new Date(config.timestamp).toLocaleString()}`;
+            item.appendChild(nameSpan);
+
+            const loadBtn = document.createElement('button');
+            loadBtn.className = 'config-load-btn';
+            loadBtn.textContent = 'Load';
+            loadBtn.addEventListener('click', () => this.loadConfigurationByName(config.name));
+            item.appendChild(loadBtn);
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'config-delete-btn';
+            deleteBtn.textContent = '×';
+            deleteBtn.title = 'Delete this configuration';
+            deleteBtn.addEventListener('click', () => {
+                if (confirm(`Delete "${config.name}"?`)) {
+                    this.deleteConfiguration(config.name);
+                }
+            });
+            item.appendChild(deleteBtn);
+
+            list.appendChild(item);
+        }
+    }
+
+    /** Read all saved configs from localStorage */
+    _loadAllConfigs() {
+        try {
+            const raw = localStorage.getItem(ControlsManager.STORAGE_KEY);
+            return raw ? JSON.parse(raw) : [];
+        } catch {
+            return [];
+        }
+    }
+
+    /** Write all configs to localStorage */
+    _saveAllConfigs(configs) {
+        try {
+            localStorage.setItem(ControlsManager.STORAGE_KEY, JSON.stringify(configs));
+        } catch {
+            alert('Could not save to localStorage — storage may be full or disabled.');
+        }
     }
     
     updatePauseButton(isPaused) {
@@ -242,35 +546,47 @@ export class ControlsManager {
     
     getParams() {
         const energy = this.params.energy;
-        const edgeMerge = this.params.edgeMerge;
         const sourceColorAdherence = this.params.sourceColorAdherence;
 
-        // Formalized macro mapping
         const activity = Math.min(1.0, 0.08 + energy * 0.92);
         const chaos = Math.min(1.0, 0.04 + energy * 0.96);
-        const deltaTime = this.params.simSpeed; // speed only, interpreted in main loop as rate
-        const radius = this.kernelWidthFromSlider(this.params.kernelWidth); // logarithmic kernel width (% image)
+        const deltaTime = this.params.simSpeed;
+        const radius = this.kernelWidthFromSlider(this.params.kernelWidth);
 
-        const sectionStrictness = Math.min(1.0, 0.20 + edgeMerge * 0.80);
-        const sectionClosure = Math.min(1.0, 0.15 + edgeMerge * 0.85);
-        const edgeConfinementBase = Math.min(1.0, 0.20 + edgeMerge * 0.80);
-        const edgeConfinement = Math.max(0.0, edgeConfinementBase * (1.0 - this.params.boundaryLeakage));
-        const sectionScale = Math.min(1.0, 0.25 + edgeMerge * 0.75);
-        const tileSize = Math.min(1.0, 0.20 + edgeMerge * 0.80);
-        const edgeAdherence = 1.0; // always prefer natural edges now
-        const microDetailInfluence = Math.max(0.0, this.params.microDetailInfluence * (1.0 - edgeMerge) * 0.6);
+        // Boundary strength: 0 = erode away, 1 = strong unbroken boundaries
+        const bs2 = this.params.boundaryStrength;
+        const boundaryReassertionRate = 0.18 * bs2;
+        const boundaryErosionStrength = 0.55 * (1.0 - bs2);
+        const boundaryDiffusionRate = 0.3;
+
+        const edgePump = 0.0;
+        const edgeConfinement = 0.25 + bs2 * 0.65;
+
+        // Previously-hardcoded section map params: now read from this.params
+        const sectionScale = this.params.sectionScale;
+        const tileSize = this.params.tileSize ?? 0.66;
+        const edgeAdherence = this.params.edgeAdherence ?? 1.0;
+        const microDetailInfluence = this.params.microDetailInfluence ?? 0.0;
+        const sectionStrictness = this.params.sectionStrictness ?? 0.70;
+        const sectionClosure = this.params.sectionClosure ?? 0.70;
 
         const structuredNoise = this.params.hazardRate;
         const mutation = this.params.hazardRate;
         const noiseScale = 0.45 + this.params.hazardRate * 0.45;
-        const noisePersistence = Math.max(0.0, Math.min(1.0, this.params.paletteStability - this.params.hazardRate * 0.25));
+        // noisePersistence: direct from slider, no longer overwritten
+        const noisePersistence = this.params.noisePersistence;
 
-        const imagePump = 0.0; // source pull handled by sourceColorAdherence + explicit pump controls
-        const edgePump = this.params.edgePump;
+        const imagePump = 0.0;
 
-        // Explicit master control for broad-vs-detailed boundaries
         const bs = this.params.boundarySimplification;
         const sectionizerSimplification = Math.max(0.0, Math.min(1.0, bs));
+        const boundaryLeakage = 0.10 + (1.0 - bs2) * 0.30;
+
+        // Collect all tunable params for direct pass-through to shaders
+        const tunables = {};
+        for (const p of TUNABLE_PARAMS) {
+            tunables[p.key] = this.params[p.key] ?? p.default;
+        }
 
         return {
             activity,
@@ -298,9 +614,17 @@ export class ControlsManager {
             sourceColorAdherence,
             hazardRate: this.params.hazardRate,
             paletteStability: this.params.paletteStability,
-            boundaryLeakage: this.params.boundaryLeakage,
+            boundaryLeakage,
+            boundaryReassertionRate,
+            boundaryErosionStrength,
+            boundaryDiffusionRate,
             patternCoupling: this.params.patternCoupling,
-            showSections: this.params.showSections
+            colorFeedback: this.params.colorFeedback,
+            colorInertia: this.params.colorInertia,
+            sourceDrift: this.params.sourceDrift,
+            showSections: this.params.showSections,
+            // All tunable params (shader uniforms)
+            ...tunables
         };
     }
 }

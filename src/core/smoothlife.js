@@ -9,8 +9,10 @@ import {
     convolutionShader, 
     transitionShader,
     structuredNoiseUpdateShader,
-    sectionMapShader
+    sectionMapShader,
+    boundaryEvolutionShader
 } from '../render/shaders.js';
+import { TUNABLE_PARAMS } from '../ui/tunableParams.js';
 import { createSectionHierarchy, getSectionTexturesFromHierarchy } from './sectionizer.js';
 import { 
     createShader, 
@@ -21,6 +23,14 @@ import {
     setupQuadFlipped,
     bindQuadAttributes 
 } from '../render/webglUtils.js';
+
+// Pre-group tunable params by shader for efficient per-frame uniform setting
+const _tunablesByShader = {};
+for (const p of TUNABLE_PARAMS) {
+    if (p.shader === 'existing') continue; // handled by manual uniform setting
+    if (!_tunablesByShader[p.shader]) _tunablesByShader[p.shader] = [];
+    _tunablesByShader[p.shader].push(p);
+}
 
 export class SmoothLifeEngine {
     constructor(canvas, width, height, originalImageData, recreateCanvas = false) {
@@ -78,20 +88,25 @@ export class SmoothLifeEngine {
         const noiseFs = createShader(gl, gl.FRAGMENT_SHADER, structuredNoiseUpdateShader);
         const sectionFs = createShader(gl, gl.FRAGMENT_SHADER, sectionMapShader);
         
+        const boundaryFs = createShader(gl, gl.FRAGMENT_SHADER, boundaryEvolutionShader);
+        
         this.displayProgram = createProgram(gl, vs, displayFs);
         this.edgeProgram = createProgram(gl, vs, edgeFs);
         this.convolutionProgram = createProgram(gl, vs, convFs);
         this.transitionProgram = createProgram(gl, vs, transFs);
         this.noiseProgram = createProgram(gl, vs, noiseFs);
         this.sectionProgram = createProgram(gl, vs, sectionFs);
+        this.boundaryProgram = createProgram(gl, vs, boundaryFs);
         
         // Setup geometry
         this.displayQuad = setupQuadFlipped(gl, this.displayProgram);
+        this.blitQuad = setupQuad(gl, this.displayProgram);
         this.edgeQuad = setupQuad(gl, this.edgeProgram);
         this.convQuad = setupQuad(gl, this.convolutionProgram);
         this.transQuad = setupQuad(gl, this.transitionProgram);
         this.noiseQuad = setupQuad(gl, this.noiseProgram);
         this.sectionQuad = setupQuad(gl, this.sectionProgram);
+        this.boundaryQuad = setupQuad(gl, this.boundaryProgram);
         
         // Create textures
         this.originalTexture = createTexture(gl, this.width, this.height, this.originalImageData);
@@ -101,7 +116,9 @@ export class SmoothLifeEngine {
         this.convolutionTexture = createTexture(gl, this.width, this.height);
         this.noiseTexture0 = createTexture(gl, this.width, this.height);
         this.noiseTexture1 = createTexture(gl, this.width, this.height);
-        this.sectionTexture = createTexture(gl, this.width, this.height);
+        this.boundaryTexture0 = createTexture(gl, this.width, this.height);
+        this.boundaryTexture1 = createTexture(gl, this.width, this.height);
+        this.boundaryTargetTexture = createTexture(gl, this.width, this.height);
         this.regionTexture = createTexture(gl, this.width, this.height);
         this.sectionDebugTexture = createTexture(gl, this.width, this.height);
         
@@ -112,16 +129,19 @@ export class SmoothLifeEngine {
         this.stateFramebuffer1 = createFramebuffer(gl, this.stateTexture1);
         this.noiseFramebuffer0 = createFramebuffer(gl, this.noiseTexture0);
         this.noiseFramebuffer1 = createFramebuffer(gl, this.noiseTexture1);
-        this.sectionFramebuffer = createFramebuffer(gl, this.sectionTexture);
+        this.boundaryFramebuffer0 = createFramebuffer(gl, this.boundaryTexture0);
+        this.boundaryFramebuffer1 = createFramebuffer(gl, this.boundaryTexture1);
         
         this.currentStateIndex = 0;
         this.currentNoiseIndex = 0;
+        this.currentBoundaryIndex = 0;
         
         gl.viewport(0, 0, this.width, this.height);
         
-        // Pre-compute edges
+        // Pre-compute edges, build section regions, then initialize boundary field from them
         this.computeEdges(0.6);
         this.computeSections();
+        this.initBoundaries();
         this.seedNoiseTextures();
     }
     
@@ -142,8 +162,28 @@ export class SmoothLifeEngine {
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
+    initBoundaries() {
+        // Blit the sectionizer's boundary output to both ping-pong buffers.
+        // The reassertion target is the simplified region boundaries, not raw edges.
+        const gl = this.gl;
+        gl.useProgram(this.displayProgram);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.boundaryTargetTexture);
+        gl.uniform1i(gl.getUniformLocation(this.displayProgram, 'u_texture'), 0);
+        
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.boundaryFramebuffer0);
+        bindQuadAttributes(gl, this.blitQuad);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.boundaryFramebuffer1);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        
+        this.currentBoundaryIndex = 0;
+    }
+
     computeSections(params = {}) {
-        // CPU sectionization to produce broad cartoon-like regions + soft boundaries.
+        // CPU sectionization for region IDs (palette pump) and debug view.
+        // Boundary field is now dynamic and handled by the GPU boundary evolution pass.
         const edgeDetail = params.edgeDetail ?? 0.62;
         const simplification = params.sectionizerSimplification ?? 0.35;
         const boundaryLeakage = params.boundaryLeakage ?? 0.18;
@@ -166,12 +206,13 @@ export class SmoothLifeEngine {
         });
 
         const gl = this.gl;
-        gl.bindTexture(gl.TEXTURE_2D, this.sectionTexture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, boundaryData);
         gl.bindTexture(gl.TEXTURE_2D, this.regionTexture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, regionData);
         gl.bindTexture(gl.TEXTURE_2D, this.sectionDebugTexture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, debugData);
+        // The boundary target is the sectionizer's soft boundary — the reassertion attractor
+        gl.bindTexture(gl.TEXTURE_2D, this.boundaryTargetTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, boundaryData);
     }
     
     reset() {
@@ -185,6 +226,10 @@ export class SmoothLifeEngine {
         this.currentNoiseIndex = 0;
         this.frameCount = 0;
         this.seedNoiseTextures();
+        // Force section recompute so boundary target is fresh
+        this._sectionLevelSignature = null;
+        this.computeSections();
+        this.initBoundaries();
     }
 
     seedNoiseTextures() {
@@ -212,35 +257,76 @@ export class SmoothLifeEngine {
         const nextFramebuffer = this.currentStateIndex === 0 ? this.stateFramebuffer1 : this.stateFramebuffer0;
         const currentNoiseTexture = this.currentNoiseIndex === 0 ? this.noiseTexture0 : this.noiseTexture1;
         const nextNoiseFramebuffer = this.currentNoiseIndex === 0 ? this.noiseFramebuffer1 : this.noiseFramebuffer0;
+        const currentBoundaryTexture = this.currentBoundaryIndex === 0 ? this.boundaryTexture0 : this.boundaryTexture1;
+        const nextBoundaryFramebuffer = this.currentBoundaryIndex === 0 ? this.boundaryFramebuffer1 : this.boundaryFramebuffer0;
         
-        // Recompute edges if controls are present
+        // Recompute edges if controls are present (and re-seed boundaries)
         if (params.edgeDetail !== undefined) {
             this.computeEdges(params.edgeDetail);
         }
         this.computeSections(params);
         
-        // PASS 1: Convolution
+        // PASS 0: Boundary evolution — the boundary field is alive
+        gl.bindFramebuffer(gl.FRAMEBUFFER, nextBoundaryFramebuffer);
+        gl.useProgram(this.boundaryProgram);
+        
+        gl.uniform2f(gl.getUniformLocation(this.boundaryProgram, 'u_resolution'), this.width, this.height);
+        gl.uniform1f(gl.getUniformLocation(this.boundaryProgram, 'u_deltaTime'), params.deltaTime);
+        gl.uniform1f(gl.getUniformLocation(this.boundaryProgram, 'u_reassertionRate'), params.boundaryReassertionRate ?? 0.12);
+        gl.uniform1f(gl.getUniformLocation(this.boundaryProgram, 'u_erosionStrength'), params.boundaryErosionStrength ?? 0.4);
+        gl.uniform1f(gl.getUniformLocation(this.boundaryProgram, 'u_diffusionRate'), params.boundaryDiffusionRate ?? 0.3);
+
+        // Tunable boundary params
+        if (_tunablesByShader.boundary) {
+            for (const p of _tunablesByShader.boundary) {
+                gl.uniform1f(gl.getUniformLocation(this.boundaryProgram, `u_${p.key}`), params[p.key] ?? p.default);
+            }
+        }
+        
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, currentBoundaryTexture);
+        gl.uniform1i(gl.getUniformLocation(this.boundaryProgram, 'u_currentBoundary'), 0);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.boundaryTargetTexture);
+        gl.uniform1i(gl.getUniformLocation(this.boundaryProgram, 'u_sourceEdges'), 1);
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, currentTexture);
+        gl.uniform1i(gl.getUniformLocation(this.boundaryProgram, 'u_simulationState'), 2);
+        
+        bindQuadAttributes(gl, this.boundaryQuad);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        
+        // The evolved boundary is now in the "next" buffer; use it for all subsequent passes
+        const evolvedBoundaryTexture = this.currentBoundaryIndex === 0 ? this.boundaryTexture1 : this.boundaryTexture0;
+        
+        // PASS 1: Convolution (uses evolved boundary)
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.convolutionFramebuffer);
         gl.useProgram(this.convolutionProgram);
         
-        // Convert radius percentage to pixels
         const avgDimension = (this.width + this.height) / 2;
         const radiusPixels = params.radius * avgDimension;
         
         gl.uniform2f(gl.getUniformLocation(this.convolutionProgram, 'u_resolution'), this.width, this.height);
         gl.uniform1f(gl.getUniformLocation(this.convolutionProgram, 'u_radius'), radiusPixels);
+
+        // Tunable convolution params
+        if (_tunablesByShader.convolution) {
+            for (const p of _tunablesByShader.convolution) {
+                gl.uniform1f(gl.getUniformLocation(this.convolutionProgram, `u_${p.key}`), params[p.key] ?? p.default);
+            }
+        }
         
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, currentTexture);
         gl.uniform1i(gl.getUniformLocation(this.convolutionProgram, 'u_texture'), 0);
         gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, this.sectionTexture);
+        gl.bindTexture(gl.TEXTURE_2D, evolvedBoundaryTexture);
         gl.uniform1i(gl.getUniformLocation(this.convolutionProgram, 'u_edgeTexture'), 1);
         
         bindQuadAttributes(gl, this.convQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-        // PASS 1.5: Structured noise evolution (edge-aware)
+        // PASS 1.5: Structured noise evolution (uses evolved boundary)
         gl.bindFramebuffer(gl.FRAMEBUFFER, nextNoiseFramebuffer);
         gl.useProgram(this.noiseProgram);
         gl.uniform2f(gl.getUniformLocation(this.noiseProgram, 'u_resolution'), this.width, this.height);
@@ -250,17 +336,24 @@ export class SmoothLifeEngine {
         gl.uniform1f(gl.getUniformLocation(this.noiseProgram, 'u_noisePersistence'), params.noisePersistence ?? 0.65);
         gl.uniform1f(gl.getUniformLocation(this.noiseProgram, 'u_edgeConfinement'), params.edgeConfinement ?? 0.8);
 
+        // Tunable noise params
+        if (_tunablesByShader.noise) {
+            for (const p of _tunablesByShader.noise) {
+                gl.uniform1f(gl.getUniformLocation(this.noiseProgram, `u_${p.key}`), params[p.key] ?? p.default);
+            }
+        }
+
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, currentNoiseTexture);
         gl.uniform1i(gl.getUniformLocation(this.noiseProgram, 'u_prevNoise'), 0);
         gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, this.sectionTexture);
+        gl.bindTexture(gl.TEXTURE_2D, evolvedBoundaryTexture);
         gl.uniform1i(gl.getUniformLocation(this.noiseProgram, 'u_edgeTexture'), 1);
 
         bindQuadAttributes(gl, this.noiseQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         
-        // PASS 2: Transition
+        // PASS 2: Transition (uses evolved boundary)
         gl.bindFramebuffer(gl.FRAMEBUFFER, nextFramebuffer);
         gl.useProgram(this.transitionProgram);
         
@@ -279,7 +372,17 @@ export class SmoothLifeEngine {
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_edgeAdherence'), params.edgeAdherence ?? 0.45);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_sourceColorAdherence'), params.sourceColorAdherence ?? 0.35);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_patternCoupling'), params.patternCoupling ?? 0.72);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_colorFeedback'), params.colorFeedback ?? 0.50);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_colorInertia'), params.colorInertia ?? 0.30);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_sourceDrift'), params.sourceDrift ?? 0.0);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_deltaTime'), params.deltaTime);
+
+        // Tunable transition params
+        if (_tunablesByShader.transition) {
+            for (const p of _tunablesByShader.transition) {
+                gl.uniform1f(gl.getUniformLocation(this.transitionProgram, `u_${p.key}`), params[p.key] ?? p.default);
+            }
+        }
         
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, currentTexture);
@@ -294,7 +397,7 @@ export class SmoothLifeEngine {
         gl.uniform1i(gl.getUniformLocation(this.transitionProgram, 'u_originalImage'), 2);
         
         gl.activeTexture(gl.TEXTURE3);
-        gl.bindTexture(gl.TEXTURE_2D, this.sectionTexture);
+        gl.bindTexture(gl.TEXTURE_2D, evolvedBoundaryTexture);
         gl.uniform1i(gl.getUniformLocation(this.transitionProgram, 'u_edgeTexture'), 3);
         gl.activeTexture(gl.TEXTURE4);
         gl.bindTexture(gl.TEXTURE_2D, currentNoiseTexture);
@@ -306,15 +409,18 @@ export class SmoothLifeEngine {
         bindQuadAttributes(gl, this.transQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         
-        // Swap buffers
+        // Swap all ping-pong buffers
         this.currentStateIndex = 1 - this.currentStateIndex;
         this.currentNoiseIndex = 1 - this.currentNoiseIndex;
+        this.currentBoundaryIndex = 1 - this.currentBoundaryIndex;
     }
     
     render() {
         const gl = this.gl;
         const currentTexture = this.currentStateIndex === 0 ? this.stateTexture0 : this.stateTexture1;
-        const displayTexture = this.lastParams && this.lastParams.showSections ? this.sectionDebugTexture : currentTexture;
+        const currentBoundary = this.currentBoundaryIndex === 0 ? this.boundaryTexture0 : this.boundaryTexture1;
+        // Debug: show the living boundary field instead of static section map
+        const displayTexture = this.lastParams && this.lastParams.showSections ? currentBoundary : currentTexture;
         
         // Render to canvas
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -340,6 +446,7 @@ export class SmoothLifeEngine {
         gl.deleteProgram(this.transitionProgram);
         gl.deleteProgram(this.noiseProgram);
         gl.deleteProgram(this.sectionProgram);
+        gl.deleteProgram(this.boundaryProgram);
         
         gl.deleteTexture(this.originalTexture);
         gl.deleteTexture(this.edgeTexture);
@@ -348,7 +455,9 @@ export class SmoothLifeEngine {
         gl.deleteTexture(this.convolutionTexture);
         gl.deleteTexture(this.noiseTexture0);
         gl.deleteTexture(this.noiseTexture1);
-        gl.deleteTexture(this.sectionTexture);
+        gl.deleteTexture(this.boundaryTexture0);
+        gl.deleteTexture(this.boundaryTexture1);
+        gl.deleteTexture(this.boundaryTargetTexture);
         gl.deleteTexture(this.regionTexture);
         gl.deleteTexture(this.sectionDebugTexture);
         
@@ -358,6 +467,7 @@ export class SmoothLifeEngine {
         gl.deleteFramebuffer(this.stateFramebuffer1);
         gl.deleteFramebuffer(this.noiseFramebuffer0);
         gl.deleteFramebuffer(this.noiseFramebuffer1);
-        gl.deleteFramebuffer(this.sectionFramebuffer);
+        gl.deleteFramebuffer(this.boundaryFramebuffer0);
+        gl.deleteFramebuffer(this.boundaryFramebuffer1);
     }
 }
