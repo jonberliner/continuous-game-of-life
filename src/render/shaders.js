@@ -131,6 +131,7 @@ uniform float u_deltaTime;
 uniform float u_reassertionRate;
 uniform float u_erosionStrength;
 uniform float u_diffusionRate;
+uniform float u_sourceStructureInfluence;
 
 // Tunable params
 uniform float u_boundaryDiffRadius;
@@ -182,7 +183,7 @@ void main() {
     activity = clamp(activity / float(ACT_SAMPLES) * u_boundaryActGain, 0.0, 1.0);
 
     // Reassertion: gently pull boundary back toward source image edges
-    float reassertion = (sourceEdge - current) * u_reassertionRate;
+    float reassertion = (sourceEdge - current) * u_reassertionRate * u_sourceStructureInfluence;
 
     // Erosion: high local simulation activity weakens the boundary
     float erosion = -current * activity * u_erosionStrength;
@@ -344,6 +345,7 @@ uniform sampler2D u_texture;
 uniform sampler2D u_edgeTexture;
 uniform vec2 u_resolution;
 uniform float u_radius;
+uniform float u_sourceStructureInfluence;
 
 // Tunable params
 uniform float u_innerFraction;
@@ -383,7 +385,7 @@ void main() {
         vec4 sampleColor = texture2D(u_texture, samplePos);
         float sampleEdge = texture2D(u_edgeTexture, samplePos).r;
 
-        float barrier = max(centerEdge, sampleEdge);
+        float barrier = max(centerEdge, sampleEdge) * u_sourceStructureInfluence;
         float edgeWeight = 1.0 - barrier * u_edgeAttenuation;
         float radialWeight = 1.0 - t * u_radialFalloff;
         float w = edgeWeight * radialWeight;
@@ -437,16 +439,12 @@ uniform float u_time;
 
 uniform float u_chaos;
 uniform float u_activity;
-uniform float u_randomNoise;
-uniform float u_edgePump;
-uniform float u_imagePump;
 uniform float u_structuredNoise;
 uniform float u_mutation;
-uniform float u_paletteStability;
 uniform float u_sectionScale;
-uniform float u_tileSize;
-uniform float u_edgeAdherence;
 uniform float u_sourceColorAdherence;
+uniform float u_sourceStructureInfluence;
+uniform float u_coreMinimalMode;
 uniform float u_patternCoupling;
 uniform float u_colorFeedback;
 uniform float u_colorInertia;
@@ -469,6 +467,14 @@ uniform float u_survivalCeilChaos;
 uniform float u_survivalBarrierBoost;
 uniform float u_actBirthFloorShift;
 uniform float u_actBirthCeilShift;
+uniform float u_actSurvivalCeilShift;
+uniform float u_satBirthBoost;
+uniform float u_homeoDeadOnset;
+uniform float u_homeoDeadPeak;
+uniform float u_homeoBirthShift;
+uniform float u_homeoBirthCeilShift;
+uniform float u_homeoSurvivalFloorShift;
+uniform float u_homeoDwellBoost;
 
 // L Transitions & Alive Detection
 uniform float u_transWidth;
@@ -482,6 +488,8 @@ uniform float u_aliveEdgeHigh;
 uniform float u_aliveEdgeSatBoost;
 uniform float u_aliveTransWidth;
 uniform float u_aliveConfNarrow;
+uniform float u_aliveHysteresis;
+uniform float u_aliveMemory;
 
 // L Update Dynamics
 uniform float u_lifeRateBase;
@@ -524,11 +532,17 @@ uniform float u_colorRateActScale;
 uniform float u_barrierColorDamp;
 uniform float u_confColorBoost;
 uniform float u_chromaNoiseMag;
+uniform float u_consensusLow;
+uniform float u_consensusHigh;
+uniform float u_consensusRepel;
 
 // Source Anchor
 uniform float u_anchorBaseStr;
 uniform float u_anchorBarrierScale;
 uniform float u_anchorPullRate;
+uniform float u_anchorStepMax;
+uniform float u_sourcePixelMix;
+uniform float u_sourceDriftScale;
 
 // Color Pump
 uniform float u_jumpRateMin;
@@ -559,6 +573,7 @@ uniform float u_chromaFloorMax;
 uniform float u_grayPushMag;
 uniform float u_finalNoiseBase;
 uniform float u_finalNoiseScale;
+uniform float u_displayValueBlend;
 
 // Color Texture — internal pattern/color diversity
 uniform float u_growthHueShift;
@@ -566,13 +581,37 @@ uniform float u_colorDiversity;
 uniform float u_lSatModulation;
 uniform float u_pumpNoiseSpread;
 
-// Pump activity damping
+// Pump activity damping & hazard gating
 uniform float u_pumpActDamp;
+uniform float u_pumpHazardFloor;
 
 // Color feedback into L-channel
 uniform float u_cfbBirthGain;
 uniform float u_cfbSurvivalGain;
 uniform float u_cfbThreshold;
+
+// Cell-neighbor-only anti-dissipation controls
+uniform float u_externalFieldInfluence;
+uniform float u_noveltyVarLow;
+uniform float u_noveltyVarHigh;
+uniform float u_noveltyBirthGain;
+uniform float u_noveltyBirthCeilGain;
+uniform float u_noveltySurvivalDrop;
+uniform float u_activityTarget;
+uniform float u_activityGain;
+uniform float u_noveltyColorGain;
+uniform float u_stasisDeltaLow;
+uniform float u_stasisDeltaHigh;
+uniform float u_consensusStasisBoost;
+uniform float u_stasisLifeBlend;
+uniform float u_stasisLifeRateBoost;
+uniform float u_stasisColorRateFloor;
+uniform float u_coreLapGain;
+uniform float u_coreReactionGain;
+uniform float u_coreColorToLGain;
+uniform float u_coreAdoptGain;
+uniform float u_coreRepelGain;
+uniform float u_coreGrowthToColorGain;
 
 varying vec2 v_texCoord;
 
@@ -612,13 +651,19 @@ vec3 abv2rgb(vec2 ab, float v) {
     return hsv2rgb(vec3(H, clamp(S, 0.0, 1.0), clamp(v, 0.02, 0.98)));
 }
 
+vec2 rotate2d(vec2 v, float angle) {
+    float c = cos(angle);
+    float s = sin(angle);
+    return vec2(v.x * c - v.y * s, v.x * s + v.y * c);
+}
+
 // ============================================================
 // L CHANNEL: SmoothLife wavefront engine
 // All constants replaced by uniforms for live tuning.
 // ============================================================
-float lifeRule_L(float m_L, float n_L, float sat,
+float lifeRule_L(float m_L, float n_L, float prevL, float sat,
                  float chaos, float confinement, float preActivity,
-                 float barrier, float colorDisagreement) {
+                 float barrier, float colorDisagreement, float localNovelty) {
     float chaosGate = 0.30 + 0.70 * chaos;
 
     float b1 = u_birthFloor;
@@ -627,10 +672,42 @@ float lifeRule_L(float m_L, float n_L, float sat,
     float s1 = u_survivalFloor;
     float s2 = u_survivalCeiling + u_survivalCeilChaos * chaosGate + barrier * u_survivalBarrierBoost;
 
-    // Activity feedback: ONLY widens birth. Never touches survival.
+    // Activity feedback: widens birth AND narrows survival at low activity.
+    // Homeostasis cycle: static → survival narrows → patterns die/move →
+    // activity rises → survival widens → patterns stabilize → repeat
     float actBias = 0.5 - preActivity;
     b1 -= actBias * u_actBirthFloorShift;
     b2 += actBias * u_actBirthCeilShift;
+    s2 -= actBias * u_actSurvivalCeilShift;
+
+    // Homeostasis rescue: near-black low-density regions are absorbing in vanilla
+    // thresholds. As local density collapses, lower birth thresholds so pixels can
+    // re-enter active regimes without external color/noise injection.
+    float density = 0.5 * (m_L + n_L);
+    float deadness = 1.0 - smoothstep(u_homeoDeadOnset, u_homeoDeadPeak, density);
+    float densityPrev = 0.5 * (prevL + n_L);
+    float deadnessPrev = 1.0 - smoothstep(u_homeoDeadOnset, u_homeoDeadPeak, densityPrev);
+    float dwell = deadness * deadnessPrev;
+    float rescue = deadness * (0.65 + 0.35 * (1.0 - preActivity));
+    rescue *= 1.0 + dwell * u_homeoDwellBoost;
+    b1 -= rescue * u_homeoBirthShift;
+    b2 -= rescue * u_homeoBirthCeilShift;
+    s1 -= rescue * u_homeoSurvivalFloorShift;
+
+    // Local novelty pressure from neighbor-state variance:
+    // when neighborhoods become too uniform, widen birth and nudge survival down.
+    b1 -= localNovelty * u_noveltyBirthGain;
+    b2 += localNovelty * u_noveltyBirthCeilGain;
+    s2 -= localNovelty * u_noveltySurvivalDrop;
+
+    // Activity homeostasis around target activity (cell-history + neighbors only).
+    float actErr = u_activityTarget - preActivity;
+    b1 -= actErr * u_activityGain * 0.5;
+    b2 += actErr * u_activityGain * 0.5;
+    s2 -= actErr * u_activityGain * 0.35;
+
+    // Saturation → birth: colorful areas birth slightly easier (S→L coupling)
+    b2 += sat * u_satBirthBoost;
 
     // Color feedback: uniform color (low disagreement) → widen birth, narrow survival
     // Creates self-sustaining cycle: uniform → spawn → diversify → settle → uniform
@@ -656,28 +733,157 @@ float lifeRule_L(float m_L, float n_L, float sat,
                   * (1.0 - smoothstep(s2 - w, s2 + w, n_L));
 
     float aliveEdge = mix(u_aliveEdgeLow, u_aliveEdgeHigh, confinement) + sat * u_aliveEdgeSatBoost;
-    float alive = smoothstep(aliveEdge, aliveEdge + u_aliveTransWidth - confinement * u_aliveConfNarrow, m_L);
+    float aliveWidth = u_aliveTransWidth - confinement * u_aliveConfNarrow;
+    float aliveNow = smoothstep(aliveEdge, aliveEdge + aliveWidth, m_L);
+    float alivePrev = smoothstep(aliveEdge - u_aliveHysteresis, aliveEdge + aliveWidth + u_aliveHysteresis, prevL);
+    float alive = mix(aliveNow, max(aliveNow, alivePrev), clamp(u_aliveMemory, 0.0, 1.0));
 
     return mix(birth, survive, alive);
 }
 
-void main() {
-    vec4 current = texture2D(u_currentState, v_texCoord);
-    vec4 conv = texture2D(u_convolution, v_texCoord);
-    vec4 original = texture2D(u_originalImage, v_texCoord);
+// ============================
+// Phase-1 modular core blocks
+// ============================
+vec4 coreSampleL(vec2 uv, vec2 px, float lSelf) {
+    float lL = getLuminance(clamp(texture2D(u_currentState, uv - vec2(px.x, 0.0)).rgb, 0.0, 1.0));
+    float lR = getLuminance(clamp(texture2D(u_currentState, uv + vec2(px.x, 0.0)).rgb, 0.0, 1.0));
+    float lU = getLuminance(clamp(texture2D(u_currentState, uv + vec2(0.0, px.y)).rgb, 0.0, 1.0));
+    float lD = getLuminance(clamp(texture2D(u_currentState, uv - vec2(0.0, px.y)).rgb, 0.0, 1.0));
+    float meanN = 0.25 * (lL + lR + lU + lD);
+    float varN = 0.25 * (pow(lL - lSelf, 2.0) + pow(lR - lSelf, 2.0) + pow(lU - lSelf, 2.0) + pow(lD - lSelf, 2.0));
+    float grad = 0.5 * length(vec2(lR - lL, lU - lD));
+    float lap = meanN - lSelf;
+    return vec4(meanN, varN, grad, lap);
+}
+
+vec4 coreSampleAB(vec2 uv, vec2 px, vec2 abSelf) {
+    vec2 abL = rgb2ab(clamp(texture2D(u_currentState, uv - vec2(px.x, 0.0)).rgb, 0.0, 1.0));
+    vec2 abR = rgb2ab(clamp(texture2D(u_currentState, uv + vec2(px.x, 0.0)).rgb, 0.0, 1.0));
+    vec2 abU = rgb2ab(clamp(texture2D(u_currentState, uv + vec2(0.0, px.y)).rgb, 0.0, 1.0));
+    vec2 abD = rgb2ab(clamp(texture2D(u_currentState, uv - vec2(0.0, px.y)).rgb, 0.0, 1.0));
+    vec2 meanAB = 0.25 * (abL + abR + abU + abD);
+    vec2 lapAB = meanAB - abSelf;
+    return vec4(meanAB, lapAB.x, lapAB.y);
+}
+
+float coreComputeLTarget(float lSelf, float nL, vec4 lFeat, float preAct, float satCur) {
+    float varN = lFeat.y;
+    float grad = lFeat.z;
+    float lap = lFeat.w;
+    float lowNovel = 1.0 - smoothstep(u_noveltyVarLow, u_noveltyVarHigh, varN);
+    float actErr = u_activityTarget - preAct;
+
+    float b1 = u_birthFloor - lowNovel * u_noveltyBirthGain - actErr * u_activityGain * 0.5;
+    float b2 = u_birthCeiling + lowNovel * u_noveltyBirthCeilGain + actErr * u_activityGain * 0.5;
+    float s1 = u_survivalFloor;
+    float s2 = u_survivalCeiling - lowNovel * u_noveltySurvivalDrop - actErr * u_activityGain * 0.35;
+    float w = max(u_transWidthFloor, u_transWidth);
+
+    float birth = smoothstep(b1 - w, b1 + w, nL) * (1.0 - smoothstep(b2 - w, b2 + w, nL));
+    float survive = smoothstep(s1 - w, s1 + w, nL) * (1.0 - smoothstep(s2 - w, s2 + w, nL));
+    float alive = smoothstep(u_aliveEdgeLow, u_aliveEdgeLow + u_aliveTransWidth, lSelf);
+    float target = mix(birth, survive, alive);
+
+    float stasis = 1.0 - smoothstep(u_stasisDeltaLow, u_stasisDeltaHigh, abs(lap) + grad + abs(nL - lSelf));
+    float antiStasisTarget = clamp(lFeat.x + (0.5 - lSelf) * 0.20, 0.0, 1.0);
+    target = mix(target, antiStasisTarget, clamp(stasis * u_stasisLifeBlend, 0.0, 1.0));
+    // Core-only reaction terms: curvature + local attractor + chroma-to-L feedback.
+    target += lap * u_coreLapGain;
+    target += (0.5 - lSelf) * (0.25 + preAct * 0.75) * u_coreReactionGain;
+    target += (satCur - 0.22) * u_coreColorToLGain;
+    return clamp(target, 0.0, 1.0);
+}
+
+void runCoreMinimalPath(vec4 current, vec4 conv, vec4 original, vec2 px) {
+    float mL = conv.r;
+    float nL = getLuminance(vec3(conv.g, conv.b, conv.a));
     float edge = texture2D(u_edgeTexture, v_texCoord).r;
-
-    float m_L = conv.r;
-    vec3 outerColorRGB = vec3(conv.g, conv.b, conv.a);
-
-    // Barrier from boundary field
-    vec2 px = 1.0 / u_resolution;
     float edgeN =
         texture2D(u_edgeTexture, v_texCoord + vec2(px.x, 0.0)).r +
         texture2D(u_edgeTexture, v_texCoord - vec2(px.x, 0.0)).r +
         texture2D(u_edgeTexture, v_texCoord + vec2(0.0, px.y)).r +
         texture2D(u_edgeTexture, v_texCoord - vec2(0.0, px.y)).r;
     edgeN *= 0.25;
+    float barrier = clamp((edge * u_barrierSelfWeight + edgeN * u_barrierNeighborWeight) * u_sourceStructureInfluence, 0.0, 1.0);
+    nL = mix(nL, mL, barrier * u_barrierColorMix);
+    vec2 abCur = rgb2ab(clamp(current.rgb, 0.0, 1.0));
+    float satCur = length(abCur);
+    vec4 lFeat = coreSampleL(v_texCoord, px, mL);
+    float preAct = clamp(abs(nL - mL) * u_preActLumScale + lFeat.z * u_preActBaseScale + 0.35 * u_activity, 0.0, 1.0);
+    float lTarget = coreComputeLTarget(mL, nL, lFeat, preAct, satCur);
+
+    float stasisL = 1.0 - smoothstep(u_stasisDeltaLow, u_stasisDeltaHigh, abs(lFeat.w) + lFeat.z + abs(nL - mL));
+    // Keep a nonzero baseline dynamic rate so core mode never visually freezes.
+    float lRateBase = 0.28 + u_lifeRateBase + 0.45 * u_activity;
+    float lRate = clamp((lRateBase + u_lifeRateActScale * preAct) * (1.0 + u_stasisLifeRateBoost * stasisL) * u_deltaTime, 0.0, 1.0);
+    // Local curvature drive to avoid blur/static basins.
+    lTarget = clamp(lTarget + 0.85 * lFeat.w + (0.15 + 0.35 * stasisL) * (0.5 - mL), 0.0, 1.0);
+    float newL = clamp(mix(mL, lTarget, lRate), 0.0, 1.0);
+    float growth = newL - mL;
+
+    vec4 abFeat = coreSampleAB(v_texCoord, px, abCur);
+    vec2 abMean = abFeat.xy;
+    vec2 lapAB = abFeat.zw;
+    float abVar = dot(lapAB, lapAB);
+    vec2 d = abMean - abCur;
+    float dMag = length(d);
+    float lowNovel = 1.0 - smoothstep(u_noveltyVarLow, u_noveltyVarHigh, lFeat.y + abVar * 0.6);
+    float stasisC = 1.0 - smoothstep(u_stasisDeltaLow, u_stasisDeltaHigh, abs(growth) + dMag);
+    float colorRate = (0.12 + u_colorRateBase + u_colorRateActScale * preAct + 0.25 * u_activity) * u_patternCoupling;
+    colorRate *= 1.0 + u_noveltyColorGain * lowNovel;
+    colorRate = max(colorRate, u_stasisColorRateFloor * stasisC);
+    colorRate *= 1.0 - barrier * u_barrierColorDamp;
+
+    float adopt = smoothstep(0.01, 0.20, dMag) * (1.0 - smoothstep(0.60, 1.20, dMag));
+    vec2 adoptForce = d * adopt * colorRate * u_coreAdoptGain * u_deltaTime;
+    float lapMag = length(lapAB);
+    vec2 repelDir = lapMag > 1.0e-5 ? (-lapAB / lapMag) : vec2(0.0);
+    vec2 repel = repelDir * u_consensusRepel * u_coreRepelGain * (1.0 + stasisC * u_consensusStasisBoost) * u_deltaTime;
+    vec2 growthDrive = vec2(growth, -growth) * u_coreGrowthToColorGain * u_deltaTime;
+    vec2 abNew = abCur + adoptForce + repel + growthDrive;
+    // Source adherence as a bias in minimal mode (not a lock).
+    vec2 abSrc = rgb2ab(clamp(original.rgb, 0.0, 1.0));
+    float srcPull = clamp(u_sourceColorAdherence * (0.15 + 0.20 * (1.0 - barrier)) * u_deltaTime, 0.0, 1.0);
+    abNew = mix(abNew, mix(abMean, abSrc, 0.70), srcPull);
+    float sat = length(abNew);
+    if (sat > 1.0) abNew /= sat;
+
+    float displayL = mix(newL, mL, clamp(u_displayValueBlend, 0.0, 1.0));
+    vec3 finalRGB = abv2rgb(abNew, displayL);
+    gl_FragColor = vec4(clamp(finalRGB, 0.0, 1.0), 1.0);
+}
+
+void main() {
+    vec4 current = texture2D(u_currentState, v_texCoord);
+    vec4 conv = texture2D(u_convolution, v_texCoord);
+    vec4 original = texture2D(u_originalImage, v_texCoord);
+    vec2 px = 1.0 / u_resolution;
+    if (u_coreMinimalMode > 0.5) {
+        runCoreMinimalPath(current, conv, original, px);
+        return;
+    }
+
+    float m_L = conv.r;
+    vec3 outerColorRGB = vec3(conv.g, conv.b, conv.a);
+
+    float lC = getLuminance(clamp(current.rgb, 0.0, 1.0));
+    float lL = getLuminance(clamp(texture2D(u_currentState, v_texCoord - vec2(px.x, 0.0)).rgb, 0.0, 1.0));
+    float lR = getLuminance(clamp(texture2D(u_currentState, v_texCoord + vec2(px.x, 0.0)).rgb, 0.0, 1.0));
+    float lU = getLuminance(clamp(texture2D(u_currentState, v_texCoord + vec2(0.0, px.y)).rgb, 0.0, 1.0));
+    float lD = getLuminance(clamp(texture2D(u_currentState, v_texCoord - vec2(0.0, px.y)).rgb, 0.0, 1.0));
+    float cellEdge = clamp((abs(lR - lL) + abs(lU - lD)) * 1.4, 0.0, 1.0);
+    float edgeField = texture2D(u_edgeTexture, v_texCoord).r;
+    float edge = mix(cellEdge, edgeField, u_externalFieldInfluence * u_sourceStructureInfluence);
+
+    // Barrier from boundary field
+    float edgeN =
+        texture2D(u_edgeTexture, v_texCoord + vec2(px.x, 0.0)).r +
+        texture2D(u_edgeTexture, v_texCoord - vec2(px.x, 0.0)).r +
+        texture2D(u_edgeTexture, v_texCoord + vec2(0.0, px.y)).r +
+        texture2D(u_edgeTexture, v_texCoord - vec2(0.0, px.y)).r;
+    edgeN *= 0.25;
+    float edgeCellN = 0.5 * (abs(lR - lC) + abs(lU - lC));
+    edgeN = mix(edgeCellN, edgeN, u_externalFieldInfluence * u_sourceStructureInfluence);
     float barrier = clamp(edge * u_barrierSelfWeight + edgeN * u_barrierNeighborWeight, 0.0, 1.0);
 
     // Barrier-attenuated outer ring
@@ -691,7 +897,7 @@ void main() {
 
     // Structured noise → n_L
     vec3 structured = texture2D(u_structuredNoiseTexture, v_texCoord).rgb;
-    n_L += (structured.r - 0.5) * u_noiseLMag * (0.5 + 0.5 * u_chaos);
+    n_L += (structured.r - 0.5) * u_noiseLMag * (0.5 + 0.5 * u_chaos) * u_externalFieldInfluence;
     n_L = clamp(n_L, 0.0, 1.0);
 
     // Boundary confinement
@@ -704,7 +910,9 @@ void main() {
         float fi = float(i);
         float ang = fi * CONF_GOLDEN;
         vec2 confUV = v_texCoord + vec2(cos(ang), sin(ang)) * confRadiusUv;
-        confinement += texture2D(u_edgeTexture, confUV).r;
+        float confField = texture2D(u_edgeTexture, confUV).r * u_sourceStructureInfluence;
+        float confCell = abs(getLuminance(clamp(texture2D(u_currentState, confUV).rgb, 0.0, 1.0)) - lC) * 2.0;
+        confinement += mix(confCell, confField, u_externalFieldInfluence);
     }
     confinement = clamp(confinement / float(CONF_SAMPLES) * u_confGain, 0.0, 1.0);
 
@@ -718,9 +926,28 @@ void main() {
         0.0, 1.0
     );
 
+    float lumVar = 0.25 * (pow(lL - lC, 2.0) + pow(lR - lC, 2.0) + pow(lU - lC, 2.0) + pow(lD - lC, 2.0));
+    vec2 abC = rgb2ab(clamp(current.rgb, 0.0, 1.0));
+    vec2 abL2 = rgb2ab(clamp(texture2D(u_currentState, v_texCoord - vec2(px.x, 0.0)).rgb, 0.0, 1.0));
+    vec2 abR2 = rgb2ab(clamp(texture2D(u_currentState, v_texCoord + vec2(px.x, 0.0)).rgb, 0.0, 1.0));
+    vec2 abU2 = rgb2ab(clamp(texture2D(u_currentState, v_texCoord + vec2(0.0, px.y)).rgb, 0.0, 1.0));
+    vec2 abD2 = rgb2ab(clamp(texture2D(u_currentState, v_texCoord - vec2(0.0, px.y)).rgb, 0.0, 1.0));
+    float abVar = 0.25 * (dot(abL2 - abC, abL2 - abC) + dot(abR2 - abC, abR2 - abC) + dot(abU2 - abC, abU2 - abC) + dot(abD2 - abC, abD2 - abC));
+    float localNovelty = 1.0 - smoothstep(u_noveltyVarLow, u_noveltyVarHigh, lumVar + abVar * 0.6);
+
     // L update
-    float targetL = lifeRule_L(m_L, n_L, sat_cur, u_chaos, confinement, preActivity, barrier, dMag);
-    float lifeRate_L = clamp((u_lifeRateBase + u_activity * u_lifeRateActScale) * u_deltaTime, 0.0, 1.0);
+    float prevL = getLuminance(clamp(current.rgb, 0.0, 1.0));
+    float targetL = lifeRule_L(m_L, n_L, prevL, sat_cur, u_chaos, confinement, preActivity, barrier, dMag, localNovelty);
+    float stasisL = 1.0 - smoothstep(
+        u_stasisDeltaLow,
+        u_stasisDeltaHigh,
+        abs(n_L - m_L) + abs(prevL - m_L) + dMag * 0.6
+    );
+    // Cell-neighbor/history anti-stasis drive: when local dynamics stall, bias toward
+    // neighborhood wavefront balance and increase update rate.
+    float antiStasisTarget = clamp(n_L + (0.5 - m_L) * 0.20, 0.0, 1.0);
+    targetL = mix(targetL, antiStasisTarget, clamp(u_stasisLifeBlend * stasisL, 0.0, 1.0));
+    float lifeRate_L = clamp((u_lifeRateBase + u_activity * u_lifeRateActScale) * (1.0 + u_stasisLifeRateBoost * stasisL) * u_deltaTime, 0.0, 1.0);
     float newL = mix(m_L, targetL, lifeRate_L);
 
     // Symmetry-breaking perturbation
@@ -735,7 +962,10 @@ void main() {
     // (a, b) CHROMATICITY UPDATE
     // ============================================================
 
+    float srcAdh = clamp(u_sourceColorAdherence, 0.0, 1.0);
+    // Source adherence should bias chroma relationships only, not lock value/L.
     float colorActBias = 0.5 - preActivity;
+    float freeColor = 1.0 - srcAdh;
 
     // Adoption
     float adoptOnset   = max(u_adoptOnsetFloor, u_adoptOnset - colorActBias * u_adoptOnsetActScale);
@@ -755,6 +985,8 @@ void main() {
 
     // Color rate
     float colorRate = (u_colorRateBase + u_activity * u_colorRateActScale) * u_patternCoupling;
+    colorRate *= 1.0 + localNovelty * u_noveltyColorGain;
+    colorRate = max(colorRate, u_stasisColorRateFloor * stasisL);
 
     // Adoption force
     vec2 adoptForce = d_color * adoption * colorRate * lGate * wavefrontBoost;
@@ -769,8 +1001,21 @@ void main() {
     // Confinement boosts color dynamics
     float confBoost = 1.0 + confinement * u_confColorBoost;
 
+    // Deterministic anti-consensus from local ab curvature:
+    // if chroma field becomes too uniform, push against local consensus.
+    vec2 abL = rgb2ab(clamp(texture2D(u_currentState, v_texCoord - vec2(px.x, 0.0)).rgb, 0.0, 1.0));
+    vec2 abR = rgb2ab(clamp(texture2D(u_currentState, v_texCoord + vec2(px.x, 0.0)).rgb, 0.0, 1.0));
+    vec2 abU = rgb2ab(clamp(texture2D(u_currentState, v_texCoord + vec2(0.0, px.y)).rgb, 0.0, 1.0));
+    vec2 abD = rgb2ab(clamp(texture2D(u_currentState, v_texCoord - vec2(0.0, px.y)).rgb, 0.0, 1.0));
+    vec2 lapAB = 0.25 * (abL + abR + abU + abD) - ab_cur;
+    float lapMag = length(lapAB);
+    float consensus = 1.0 - smoothstep(u_consensusLow, u_consensusHigh, lapMag);
+    vec2 repelDir = lapMag > 1.0e-5 ? (-lapAB / lapMag) : vec2(0.0);
+    float stasis = 1.0 - smoothstep(u_stasisDeltaLow, u_stasisDeltaHigh, abs(growth) + dMag * 0.6);
+    vec2 consensusForce = repelDir * u_consensusRepel * consensus * (1.0 + stasis * u_consensusStasisBoost) * lGate * u_deltaTime;
+
     // Total color change
-    vec2 deltaAB = (adoptForce + fortifyForce) * barrierDamp * confBoost * u_deltaTime;
+    vec2 deltaAB = (adoptForce + fortifyForce) * barrierDamp * confBoost * u_deltaTime + consensusForce;
     vec2 ab_new = ab_cur + deltaAB;
 
     // GROWTH-HUE COUPLING: L-channel growth rotates color direction
@@ -787,13 +1032,14 @@ void main() {
 
     // Structured noise perturbation in chromaticity space
     float noiseAngle = (structured.g - 0.5) * 6.2832;
-    float noiseMag = (structured.b - 0.5) * u_chromaNoiseMag * u_chaos;
+    float noiseMag = (structured.b - 0.5) * u_chromaNoiseMag * u_chaos * u_externalFieldInfluence;
     ab_new += vec2(cos(noiseAngle), sin(noiseAngle)) * noiseMag * lGate * u_deltaTime;
 
     // ANTI-UNIFORMITY: break up uniform color regions
     // When local colors strongly agree, inject structured noise to create organic texture
     float uniformity = smoothstep(0.05, 0.0, dMag); // 1.0 when colors perfectly agree
-    float divAngle = (structured.b - 0.5) * 6.2832 + structured.r * 3.0;
+    vec2 gradVec = vec2(lR - lL, lU - lD);
+    float divAngle = length(gradVec) > 1.0e-4 ? (atan(gradVec.y, gradVec.x) + 1.5707963) : (hash(v_texCoord * 131.0) * 6.2832);
     float divMag = u_colorDiversity * uniformity * lGate * sat_cur;
     ab_new += vec2(cos(divAngle), sin(divAngle)) * divMag * u_deltaTime;
 
@@ -805,8 +1051,9 @@ void main() {
     // REGION SOURCE POOLING
     // ============================================================
     float hazard = clamp(u_mutation, 0.0, 1.0);
-    float stability = clamp(u_paletteStability, 0.0, 1.0);
-    float srcAdh = clamp(u_sourceColorAdherence, 0.0, 1.0);
+    // Preserve source-informed palettes at moderate adherence:
+    // hazard becomes mostly active only as adherence decreases.
+    float hazardEff = hazard * (1.0 - srcAdh);
 
     float sectionVal = edge;
     vec3 regionSrc = original.rgb;
@@ -822,7 +1069,7 @@ void main() {
         float ang = fi * REGION_ANGLE;
         vec2 uv = v_texCoord + vec2(cos(ang), sin(ang)) * r;
         vec3 src = texture2D(u_originalImage, uv).rgb;
-        float e = texture2D(u_edgeTexture, uv).r;
+        float e = texture2D(u_edgeTexture, uv).r * u_sourceStructureInfluence;
         float w = 1.0 - max(sectionVal, e) * 0.94;
         regionSrc += src * w;
         seedW += w;
@@ -835,27 +1082,39 @@ void main() {
     // ============================================================
     vec2 ab_src = rgb2ab(clamp(original.rgb, 0.0, 1.0));
 
-    // SOURCE DRIFT: GoL growth rotates the source "memory"
-    // Active areas evolve their reference point; quiet areas keep original
-    float srcDriftAngle = gatedGrowth * u_sourceDrift * 5.0;
+    // SOURCE DRIFT: rotate source anchor by local temporal/spatial dynamics.
+    // Uses growth + disagreement + structured jitter so drift is visible and persistent.
+    float driftDrive = growth * (1.0 + 2.0 * preActivity)
+                     + (dMag - 0.12) * 0.35
+                     + (structured.r - 0.5) * 0.08;
+    float srcDriftAngle = driftDrive * u_sourceDrift * u_sourceDriftScale;
     float cSD = cos(srcDriftAngle);
     float sSD = sin(srcDriftAngle);
     ab_src = vec2(ab_src.x * cSD - ab_src.y * sSD,
                   ab_src.x * sSD + ab_src.y * cSD);
 
-    // Source chroma: grayscale source pixels have no color to anchor to,
-    // so color-space adherence scales by source chromaticity.
-    // Structure (L-channel, boundaries) still uses the source — only (a,b) anchor is affected.
-    float srcPixelChroma = length(rgb2ab(clamp(original.rgb, 0.0, 1.0)));
-    float chromaGate = smoothstep(0.05, 0.25, srcPixelChroma);
+    // Gate source anchoring by region chroma (not single source pixel chroma)
+    // to avoid pixel-wise source stamping/flicker at high adherence.
+    float chromaGate = smoothstep(0.05, 0.25, length(ab_regionSrc));
 
-    vec2 ab_src_offset = ab_src - ab_regionSrc;
-    vec2 ab_target_indirect = ab_neigh + ab_src_offset;   // relative structure
-    vec2 ab_target = mix(ab_target_indirect, ab_src, srcAdh); // high adherence → pull toward actual source color
-    float anchorStr = srcAdh * (u_anchorBaseStr + u_anchorBarrierScale * (1.0 - barrier)) * chromaGate;
-    // Pull rate scales with adherence: at srcAdh=1, 5× faster so source colors actually appear
-    float effectivePullRate = u_anchorPullRate * (1.0 + srcAdh * 4.0);
-    ab_new += (ab_target - ab_new) * anchorStr * effectivePullRate * u_deltaTime;
+    // Blend per-pixel source with region-pooled source so high adherence guides
+    // color fields instead of stamping raw source pixels into the simulation.
+    float sourcePixelMix = min(u_sourcePixelMix, 0.25);
+    vec2 ab_anchorSrc = mix(ab_regionSrc, ab_src, sourcePixelMix);
+    vec2 ab_src_offset = ab_anchorSrc - ab_regionSrc;
+    // Relational-only source guidance: bias the local color field by source offset.
+    vec2 ab_target = ab_neigh + ab_src_offset * srcAdh;
+    float anchorGate = mix(1.0, chromaGate, freeColor);
+    float anchorStr = srcAdh * 0.35 * (u_anchorBaseStr + u_anchorBarrierScale * (1.0 - barrier)) * anchorGate;
+    // Pull rate scales with adherence, but step is capped to prevent source flash/flicker.
+    float effectivePullRate = u_anchorPullRate * (1.0 + srcAdh * 2.5);
+    vec2 anchorDelta = (ab_target - ab_new) * anchorStr * effectivePullRate * u_deltaTime;
+    float anchorDeltaMag = length(anchorDelta);
+    float maxAnchorStep = u_anchorStepMax * (1.0 + 1.5 * srcAdh) * u_deltaTime;
+    if (anchorDeltaMag > maxAnchorStep && anchorDeltaMag > 1.0e-5) {
+        anchorDelta *= maxAnchorStep / anchorDeltaMag;
+    }
+    ab_new += anchorDelta;
 
     // ============================================================
     // PUMP SYSTEM
@@ -865,15 +1124,15 @@ void main() {
                    + floor(regionTex.g * 255.0 + 0.5) * 256.0;
     vec2 regionCell = vec2(mod(regionId, 251.0), floor(regionId / 251.0));
     float regionPhase = hash(regionCell + vec2(7.0, 19.0));
-    float jumpRate = mix(u_jumpRateMin, u_jumpRateMax, hazard) * mix(0.35, 1.0, 1.0 - stability);
+    float jumpRate = mix(u_jumpRateMin, u_jumpRateMax, hazardEff) * mix(0.35, 1.0, hazardEff);
     float tBucket = floor((u_time + regionPhase * 13.0) * jumpRate);
 
-    float bins = mix(u_pumpBinsMax, u_pumpBinsMin, hazard);
+    float bins = mix(u_pumpBinsMax, u_pumpBinsMin, hazardEff);
     float hBase0 = floor(hash(regionCell + vec2(3.1, 5.7)) * bins + 0.5) / bins;
     float sBase0 = mix(u_pumpSatMin, u_pumpSatMax, floor(hash(regionCell + vec2(7.3, 11.9)) * 4.0 + 0.5) / 4.0);
     float vBase0 = mix(u_pumpValMin, u_pumpValMax, floor(hash(regionCell + vec2(13.7, 17.3)) * 5.0 + 0.5) / 5.0);
-    float driftRate = (u_driftRateBase + u_driftRateHazScale * hazard)
-                    * (0.20 + 0.80 * (1.0 - stability))
+    float driftRate = (u_driftRateBase + u_driftRateHazScale * hazardEff)
+                    * (0.20 + 0.80 * hazardEff)
                     * (0.35 + 0.65 * growthAbs);
     float hBase = fract(hBase0 + (u_time + regionPhase * 23.0) * driftRate);
     float sBase = clamp(sBase0 + (hash(regionCell + vec2(23.0, 41.0)) - 0.5) * 0.18
@@ -891,12 +1150,20 @@ void main() {
                   tBucket * 0.63 + 89.0)) * 5.0 + 0.5) / 5.0);
     vec2 ab_freePump = rgb2ab(hsv2rgb(vec3(hRnd, sRnd, vRnd)));
 
-    // Pump targets: only mix toward source region color if the source actually has chroma.
-    // Grayscale source → free palette colors; colored source → source-like colors.
+    // Source-centered divergence: even at low adherence, keep motion orbiting
+    // around source-region chromaticity instead of unconstrained oil-slick hues.
     float regionChroma = length(ab_regionSrc);
-    float pumpSrcMix = srcAdh * smoothstep(0.05, 0.25, regionChroma);
-    vec2 ab_pump = mix(ab_freePump, ab_regionSrc, pumpSrcMix);
-    vec2 ab_base = mix(ab_freeBase, ab_regionSrc, pumpSrcMix);
+    float sourceCentering = mix(0.10, 0.40, srcAdh);
+    float divergence = mix(1.00, 0.35, srcAdh); // high adherence still allows motion around source
+    float phaseBase = (u_time + regionPhase * 19.0) * (0.10 + 0.90 * driftRate);
+    float phasePump = (u_time + regionPhase * 29.0) * (0.16 + 1.10 * driftRate);
+    // Pump source influence is also relational to local neighborhood, not absolute source stamping.
+    vec2 srcOffsetBase = rotate2d(ab_src_offset, phaseBase) * divergence;
+    vec2 srcOffsetPump = rotate2d(ab_src_offset, phasePump) * divergence;
+    vec2 srcCenteredBase = ab_neigh + srcOffsetBase;
+    vec2 srcCenteredPump = ab_neigh + srcOffsetPump;
+    vec2 ab_base = mix(ab_freeBase, srcCenteredBase, sourceCentering);
+    vec2 ab_pump = mix(ab_freePump, srcCenteredPump, sourceCentering);
 
     // PUMP SPATIAL SPREAD: diversify per-pixel pump target
     // Each pixel in the same region pulls toward a slightly different shade
@@ -908,44 +1175,52 @@ void main() {
     // Pump activity scaling: pump backs off in active areas so dynamics can drive color
     float pumpActScale = mix(1.0, 1.0 - u_pumpActDamp, preActivity);
 
-    // Base pump — target already blends free↔source via srcAdh, so amount stays active
-    float basePumpAmt = mix(u_basePumpMin, u_basePumpMax, 1.0 - stability)
+    // Base pump — gated by hazard so hazard=0 means near-zero pump
+    float hazardPumpScale = mix(u_pumpHazardFloor, 1.0, hazardEff);
+    float adherencePumpDamp = 1.0 - 0.75 * srcAdh;
+    float basePumpAmt = mix(u_basePumpMin, u_basePumpMax, hazardEff)
                       * (0.45 + 0.55 * (1.0 - barrier))
-                      * pumpActScale;
+                      * pumpActScale
+                      * hazardPumpScale
+                      * adherencePumpDamp;
     ab_new = mix(ab_new, ab_base, clamp(basePumpAmt, 0.0, u_basePumpClamp));
 
     // Active pump
-    float pumpAmt = clamp((u_activePumpBase + u_activePumpHazScale * hazard)
-                  * (0.20 + 0.80 * (1.0 - stability))
+    float pumpAmt = clamp((u_activePumpBase + u_activePumpHazScale * hazardEff)
+                  * (0.20 + 0.80 * hazardEff)
                   * u_deltaTime
                   * (0.25 + 0.75 * growthAbs)
-                  * pumpActScale, 0.0, 1.0);
+                  * pumpActScale
+                  * adherencePumpDamp, 0.0, 1.0);
     ab_new = mix(ab_new, ab_pump, pumpAmt);
 
     // Patch uniformity
-    float patchUni = hazard * (u_patchUniBase + u_patchUniScale * (1.0 - stability))
+    float patchUni = hazardEff * (u_patchUniBase + u_patchUniScale * hazardEff)
                    * (1.0 - barrier)
-                   * (1.0 - u_patchUniGrowthDamp * growthAbs);
+                   * (1.0 - u_patchUniGrowthDamp * growthAbs)
+                   * adherencePumpDamp;
     ab_new = mix(ab_new, ab_base, patchUni);
 
     // L-VALUE SATURATION: GoL patterns visible in saturation
     // Brighter L = more vivid, creating internal texture within color regions
-    float lSatMod = mix(1.0 - u_lSatModulation, 1.0, smoothstep(0.15, 0.65, newL));
+    float lSatModStrength = u_lSatModulation * freeColor;
+    float lSatMod = mix(1.0 - lSatModStrength, 1.0, smoothstep(0.15, 0.65, newL));
     ab_new *= lSatMod;
 
     // Dead pixels desaturate
     float aliveMask = smoothstep(u_aliveMaskLow, u_aliveMaskHigh, newL);
-    ab_new *= mix(u_deadDesaturation, 1.0, aliveMask);
+    float deadDesatEff = mix(1.0, u_deadDesaturation, freeColor);
+    ab_new *= mix(deadDesatEff, 1.0, aliveMask);
 
     // Final saturation clamp
     newSat = length(ab_new);
     if (newSat > 1.0) ab_new /= newSat;
 
     // Chromatic floor
-    float chromaFloor = mix(u_chromaFloorMin, u_chromaFloorMax, 1.0 - srcAdh) * aliveMask;
+    float chromaFloor = mix(u_chromaFloorMin, u_chromaFloorMax, 1.0 - srcAdh) * aliveMask * freeColor;
     if (newSat < chromaFloor && newSat > 0.001) {
         ab_new *= chromaFloor / newSat;
-    } else if (newSat <= 0.001 && aliveMask > 0.5) {
+    } else if (newSat <= 0.001 && aliveMask > 0.5 && freeColor > 0.001) {
         float rAngle = structured.g * 6.2832;
         ab_new = vec2(cos(rAngle), sin(rAngle)) * chromaFloor * u_grayPushMag;
     }
@@ -953,33 +1228,13 @@ void main() {
     // ============================================================
     // FINAL ASSEMBLY
     // ============================================================
-    vec3 finalRGB = abv2rgb(ab_new, newL);
+    float displayL = mix(newL, m_L, clamp(u_displayValueBlend, 0.0, 1.0));
+    vec3 finalRGB = abv2rgb(ab_new, displayL);
 
     vec3 noiseRGB = (structured - 0.5)
                   * (u_finalNoiseBase + u_finalNoiseScale * u_structuredNoise)
                   * (0.25 + 0.50 * growthAbs)
                   * (1.0 - edge * 0.7);
-    vec4 newColor = vec4(clamp(finalRGB + noiseRGB, 0.0, 1.0), 1.0);
-
-    // Edge/image pump (both currently 0.0 — dormant)
-    float edgePumpVal = clamp(u_edgePump * barrier * u_deltaTime * 2.2, 0.0, 1.0);
-    float pumpStrengthVal = clamp(u_imagePump, 0.0, 1.0);
-    float shaped = pow(pumpStrengthVal, 1.7);
-    float halfLife = mix(180.0, 3.0, shaped);
-    float imagePumpBase = 1.0 - exp(-0.69314718 * u_deltaTime / halfLife);
-    float err = length(newColor.rgb - original.rgb) / 1.7320508;
-    float errTaper = smoothstep(0.06, 0.45, err);
-    float imagePumpVal = imagePumpBase * errTaper;
-
-    float pumpTotal = clamp(edgePumpVal + imagePumpVal, 0.0, 1.0);
-    if (pumpTotal > 0.001) {
-        vec2 ab_final = rgb2ab(newColor.rgb);
-        vec2 ab_orig = rgb2ab(original.rgb);
-        float chromaPull = pumpTotal * srcAdh;
-        ab_final = mix(ab_final, ab_orig, chromaPull);
-        newColor.rgb = abv2rgb(ab_final, newL);
-    }
-
-    gl_FragColor = clamp(newColor, 0.0, 1.0);
+    gl_FragColor = vec4(clamp(finalRGB + noiseRGB, 0.0, 1.0), 1.0);
 }
 `;

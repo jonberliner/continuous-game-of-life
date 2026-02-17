@@ -55,12 +55,15 @@
 
                     <div class="control-section">
                         <h3>Look Presets</h3>
-                        <div class="mode-buttons">
+                        <div class="mode-buttons preset-grid">
                             <button id="presetOrganic" class="mode-btn">Organic</button>
                             <button id="presetRegional" class="mode-btn">Regional</button>
                             <button id="presetDreamy" class="mode-btn">Dreamy</button>
                             <button id="presetWild" class="mode-btn">Wild</button>
                             <button id="presetSourceMemory" class="mode-btn">Source Memory</button>
+                            <button id="presetTestingAudit" class="mode-btn">Testing (Coupling Audit)</button>
+                            <button id="presetLineSeeking" class="mode-btn">Line-Seeking</button>
+                            <button id="presetCoreMinimal" class="mode-btn">Core Minimal Dynamics</button>
                         </div>
                         <small class="hint">Pick a style, then fine tune with the core sliders</small>
                     </div>
@@ -68,35 +71,83 @@
                     <div class="control-section">
                         <h3>Core Controls</h3>
 
+                        <label title="Runs the modular baseline rule set by forcing non-core drivers off. Use this while rebuilding core CA behavior.">
+                            Core Minimal Mode:
+                            <input type="checkbox" id="coreMinimalMode" checked>
+                        </label>
+                        <small class="hint">ON = cell/history/neighbor dynamics baseline; OFF = full legacy stack</small>
+                        <div id="pipelineStatus" class="hint">Pipeline: Core Minimal (modular baseline)</div>
+
                         <label title="How many/few region boundaries exist: broad cartoon zones to fine edge-like partitions">
-                            Boundary Simplification: <span id="boundarySimplificationValue">0.35</span>
-                            <input type="range" id="boundarySimplification" min="0" max="1" value="0.35" step="0.01">
+                            Boundary Simplification: <span id="boundarySimplificationValue">0.00</span>
+                            <input type="range" id="boundarySimplification" min="0" max="1" value="0.00" step="0.01">
                         </label>
                         <small class="hint">Left = very few broad boundaries, Right = finer region detail</small>
 
                         <label title="How strongly boundaries persist. Low = erode away, High = clear unbroken boundaries">
-                            Boundary Strength: <span id="boundaryStrengthValue">0.70</span>
-                            <input type="range" id="boundaryStrength" min="0" max="1" value="0.70" step="0.01">
+                            Boundary Strength: <span id="boundaryStrengthValue">0.00</span>
+                            <input type="range" id="boundaryStrength" min="0" max="1" value="0.00" step="0.01">
                         </label>
                         <small class="hint">0 = boundaries fully erode, 100% = strong persistent boundaries</small>
 
                         <label title="Neighborhood width used by the GoL kernel">
-                            Kernel Width: <span id="kernelWidthValue">4.5%</span>
-                            <input type="range" id="kernelWidth" min="0" max="1" value="0.55" step="0.001">
+                            Kernel Width: <span id="kernelWidthValue">1.6%</span>
+                            <input type="range" id="kernelWidth" min="0" max="1" value="0.40" step="0.001">
                         </label>
                         <small class="hint">Low = fine/local motifs, High = broad regional motifs</small>
 
                         <label title="Hazard rate for injecting new random section colors inside closed regions">
-                            Color Hazard: <span id="hazardRateValue">0.20</span>
-                            <input type="range" id="hazardRate" min="0" max="1" value="0.20" step="0.01">
+                            Color Hazard: <span id="hazardRateValue">0.00</span>
+                            <input type="range" id="hazardRate" min="0" max="1" value="0.00" step="0.01">
                         </label>
                         <small class="hint">Low = stable section colors, High = more frequent discrete color jumps</small>
 
                         <label title="How strongly colors should adhere to source palette">
-                            Source Color Adherence: <span id="sourceColorAdherenceValue">0.25</span>
-                            <input type="range" id="sourceColorAdherence" min="0" max="1" value="0.25" step="0.01">
+                            Source Color Adherence: <span id="sourceColorAdherenceValue">0.00</span>
+                            <input type="range" id="sourceColorAdherence" min="0" max="1" value="0.00" step="0.01">
                         </label>
                         <small class="hint">Low = free color evolution, High = source-like colors</small>
+
+                        <label title="Core v1: L update rate">
+                            Core L Rate: <span id="coreLRateValue">1.00</span>
+                            <input type="range" id="coreLRate" min="0.1" max="3.0" value="1.00" step="0.05">
+                        </label>
+                        <label title="Core v1: L follows neighbor mean">
+                            Core L Diffusion Gain: <span id="coreLDiffGainValue">1.20</span>
+                            <input type="range" id="coreLDiffGain" min="0.0" max="3.0" value="1.20" step="0.05">
+                        </label>
+                        <label title="Core v1: L reaction around mid-luminance">
+                            Core L Reaction Gain: <span id="coreLReactionGainValue">0.55</span>
+                            <input type="range" id="coreLReactionGain" min="0.0" max="2.0" value="0.55" step="0.05">
+                        </label>
+                        <label title="Core v1: saturation feedback into L">
+                            Core Color→L Gain: <span id="coreColorToLGainValue">0.15</span>
+                            <input type="range" id="coreColorToLGain" min="-1.0" max="1.0" value="0.15" step="0.05">
+                        </label>
+                        <label title="Core v1: chroma update rate">
+                            Core Color Rate: <span id="coreColorRateValue">1.00</span>
+                            <input type="range" id="coreColorRate" min="0.1" max="3.0" value="1.00" step="0.05">
+                        </label>
+                        <label title="Core v1: neighbor chroma adoption strength">
+                            Core Adopt Gain: <span id="coreAdoptGainValue">1.30</span>
+                            <input type="range" id="coreAdoptGain" min="0.0" max="4.0" value="1.30" step="0.1">
+                        </label>
+                        <label title="Core v1: anti-consensus chroma repulsion">
+                            Core Repel Gain: <span id="coreRepelGainValue">0.45</span>
+                            <input type="range" id="coreRepelGain" min="0.0" max="3.0" value="0.45" step="0.05">
+                        </label>
+                        <label title="Core v1: L growth drives local hue rotation">
+                            Core Growth→Hue Coupling: <span id="coreGrowthHueCouplingValue">0.90</span>
+                            <input type="range" id="coreGrowthHueCoupling" min="0.0" max="3.0" value="0.90" step="0.05">
+                        </label>
+                        <label title="Core v1: clamp per-step L change">
+                            Core Max ΔL: <span id="coreMaxDeltaLValue">0.08</span>
+                            <input type="range" id="coreMaxDeltaL" min="0.005" max="0.30" value="0.08" step="0.005">
+                        </label>
+                        <label title="Core v1: clamp per-step chroma change">
+                            Core Max ΔAB: <span id="coreMaxDeltaABValue">0.08</span>
+                            <input type="range" id="coreMaxDeltaAB" min="0.005" max="0.30" value="0.08" step="0.005">
+                        </label>
 
                         <label title="How much local color uniformity drives pattern instability. Uniform colors breed new patterns, creating a breathing cycle">
                             Color Feedback: <span id="colorFeedbackValue">0.50</span>
@@ -116,6 +167,42 @@
                         </label>
                         <small class="hint">0 = static source memory | High = wavefronts shift what "source" means, creating perpetual evolution</small>
 
+                        <label title="Structured chroma/noise influence on transition and output. External to pure neighbor-color CA">
+                            Structured Noise Amount: <span id="structuredNoiseValue">0.00</span>
+                            <input type="range" id="structuredNoise" min="0" max="1" value="0.00" step="0.01">
+                        </label>
+                        <small class="hint">Default 0 for pure neighbor-color dynamics</small>
+
+                        <label title="Hazard drive for palette pump events. External color injection path">
+                            Pump Hazard Amount: <span id="mutationValue">0.00</span>
+                            <input type="range" id="mutation" min="0" max="1" value="0.00" step="0.01">
+                        </label>
+                        <small class="hint">Default 0 keeps palette pump off</small>
+
+                        <label title="Rotates hue from L growth/death signal (non-neighbor hue injection)">
+                            Growth Hue Shift: <span id="growthHueShiftValue">0.00</span>
+                            <input type="range" id="growthHueShift" min="0" max="5" value="0.00" step="0.1">
+                        </label>
+                        <small class="hint">Default 0 disables growth-driven hue rotation</small>
+
+                        <label title="Structured-noise perturbation in chromaticity space">
+                            Chroma Noise Magnitude: <span id="chromaNoiseMagValue">0.00</span>
+                            <input type="range" id="chromaNoiseMag" min="0" max="0.15" value="0.00" step="0.005">
+                        </label>
+                        <small class="hint">Default 0 disables chroma jitter injection</small>
+
+                        <label title="Noise push in uniform color areas">
+                            Color Diversity: <span id="colorDiversityValue">0.00</span>
+                            <input type="range" id="colorDiversity" min="0" max="0.15" value="0.00" step="0.005">
+                        </label>
+                        <small class="hint">Default 0 disables anti-uniformity noise push</small>
+
+                        <label title="Spatial spread variation in pump color target">
+                            Pump Color Spread: <span id="pumpNoiseSpreadValue">0.00</span>
+                            <input type="range" id="pumpNoiseSpread" min="0" max="0.25" value="0.00" step="0.01">
+                        </label>
+                        <small class="hint">Default 0 disables per-pixel pump spread</small>
+
                         <label title="Simulation speed (logarithmic). Far left = watch single steps, far right = very fast">
                             Simulation Speed: <span id="simSpeedValue">0.65</span>
                             <input type="range" id="simSpeed" min="0" max="1" value="0.65" step="0.01">
@@ -132,6 +219,65 @@
                             Show Boundaries:
                             <input type="checkbox" id="showSections">
                         </label>
+                    </div>
+
+                    <div class="control-section">
+                        <h3>Auto Tune</h3>
+                        <label title="Automatically nudges key rule knobs toward healthy flow (activity without flicker/dead zones)">
+                            Enable Auto Tune:
+                            <input type="checkbox" id="autoTuneEnabled">
+                        </label>
+                        <label title="How strongly Auto Tune nudges parameters each update">
+                            Auto Tune Aggression: <span id="autoTuneAggressionValue">0.35</span>
+                            <input type="range" id="autoTuneAggression" min="0" max="1" value="0.35" step="0.01">
+                        </label>
+                        <small class="hint">Low = gentle drift, High = faster adaptation</small>
+
+                        <label title="Enable random drift of metric weights so optimization does not over-focus one objective forever">
+                            Weight Drift:
+                            <input type="checkbox" id="autoTuneWeightDriftEnabled">
+                        </label>
+                        <label title="Magnitude of random drift applied to health weights each optimizer generation">
+                            Weight Drift Amount: <span id="autoTuneWeightDriftValue">0.10</span>
+                            <input type="range" id="autoTuneWeightDrift" min="0" max="0.5" value="0.10" step="0.01">
+                        </label>
+                        <small class="hint">0 = fixed objective, higher = broader exploration</small>
+
+                        <label title="Weight for temporal L motion in target band">
+                            Motion Weight: <span id="healthWMotionValue">1.00</span>
+                            <input type="range" id="healthWMotion" min="0" max="3" value="1.00" step="0.05">
+                        </label>
+                        <label title="Weight for multi-scale pattern structure and orientation diversity">
+                            Pattern Weight: <span id="healthWPatternValue">1.00</span>
+                            <input type="range" id="healthWPattern" min="0" max="3" value="1.00" step="0.05">
+                        </label>
+                        <label title="Weight for structured (non-muddy, non-random) color fields">
+                            Color Structure Weight: <span id="healthWColorStructValue">1.00</span>
+                            <input type="range" id="healthWColorStruct" min="0" max="3" value="1.00" step="0.05">
+                        </label>
+                        <label title="Weight for color change speed in target band">
+                            Color Change Weight: <span id="healthWColorChangeValue">1.00</span>
+                            <input type="range" id="healthWColorChange" min="0" max="3" value="1.00" step="0.05">
+                        </label>
+                        <label title="Penalty weight for temporal flicker">
+                            Flicker Penalty: <span id="healthWFlickerValue">1.20</span>
+                            <input type="range" id="healthWFlicker" min="0" max="3" value="1.20" step="0.05">
+                        </label>
+                        <label title="Penalty weight for near-uniform/static plateaus">
+                            Uniform Penalty: <span id="healthWUniformValue">1.00</span>
+                            <input type="range" id="healthWUniform" min="0" max="3" value="1.00" step="0.05">
+                        </label>
+                        <label title="Penalty weight for persistent dark/dead regions">
+                            Dead Penalty: <span id="healthWDeadValue">1.20</span>
+                            <input type="range" id="healthWDead" min="0" max="3" value="1.20" step="0.05">
+                        </label>
+                        <label title="Weight for staying in a source-bias band (not locked, not detached)">
+                            Source Bias Weight: <span id="healthWSourceValue">0.80</span>
+                            <input type="range" id="healthWSource" min="0" max="3" value="0.80" step="0.05">
+                        </label>
+
+                        <div id="autoTuneStats" class="hint">Auto Tune disabled.</div>
+                        <pre id="autoTuneKnobScores" class="hint" style="white-space: pre-wrap; max-height: 220px; overflow: auto;">Knob scores will appear when Auto Tune runs.</pre>
                     </div>
 
                     <div class="control-section">

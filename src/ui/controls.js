@@ -10,16 +10,29 @@ export class ControlsManager {
         this.kernelWidthMax = 1.0;
         this.params = {
             // Core sliders
-            boundarySimplification: 0.35,
-            boundaryStrength: 0.70,
-            kernelWidth: 0.55,
-            hazardRate: 0.20,
-            simSpeed: 0.65,
-            energy: 0.62,
-            sourceColorAdherence: 0.25,
+            boundarySimplification: 0.00,
+            boundaryStrength: 0.00,
+            kernelWidth: 0.40,
+            hazardRate: 0.00,
+            simSpeed: 0.78,
+            energy: 0.78,
+            sourceColorAdherence: 0.00,
             colorFeedback: 0.50,
             colorInertia: 0.30,
             sourceDrift: 0.00,
+            coreMinimalMode: true,
+            autoTuneEnabled: false,
+            autoTuneAggression: 0.35,
+            autoTuneWeightDriftEnabled: false,
+            autoTuneWeightDrift: 0.10,
+            healthWMotion: 1.00,
+            healthWPattern: 1.00,
+            healthWColorStruct: 1.00,
+            healthWColorChange: 1.00,
+            healthWFlicker: 1.20,
+            healthWUniform: 1.00,
+            healthWDead: 1.20,
+            healthWSource: 0.80,
             showSections: false
         };
 
@@ -29,6 +42,80 @@ export class ControlsManager {
                 this.params[p.key] = p.default;
             }
         }
+
+        // Baseline: all optional injection/noise paths start off.
+        // This gives a clean source-anchored reference state by default.
+        Object.assign(this.params, {
+            structuredNoise: 0.00,
+            mutation: 0.00,
+            chromaNoiseMag: 0.00,
+            colorDiversity: 0.00,
+            pumpNoiseSpread: 0.00,
+            growthHueShift: 0.00,
+            lSatModulation: 0.00,
+            finalNoiseBase: 0.000,
+            finalNoiseScale: 0.000,
+            basePumpMin: 0.00,
+            basePumpMax: 0.00,
+            activePumpBase: 0.00,
+            activePumpHazScale: 0.00,
+            patchUniBase: 0.00,
+            patchUniScale: 0.00,
+            pumpHazardFloor: 0.00,
+            deadDesaturation: 1.00,
+            chromaFloorMin: 0.00,
+            chromaFloorMax: 0.00,
+            grayPushMag: 0.00,
+
+            // Movement-first defaults (cell-neighbor/history driven):
+            externalFieldInfluence: 0.00,
+            lifeRateBase: 0.055,
+            lifeRateActScale: 1.8,
+            perturbMag: 0.020,
+            growthScale: 3.1,
+            transWidth: 0.022,
+            transWidthFloor: 0.014,
+            aliveHysteresis: 0.010,
+            aliveMemory: 0.18,
+            actSurvivalCeilShift: 0.11,
+            homeoBirthShift: 0.24,
+            homeoBirthCeilShift: 0.16,
+            homeoSurvivalFloorShift: 0.07,
+            homeoDwellBoost: 2.0,
+            activityTarget: 0.54,
+            activityGain: 0.22,
+            noveltyVarLow: 0.006,
+            noveltyVarHigh: 0.020,
+            noveltyBirthGain: 0.18,
+            noveltyBirthCeilGain: 0.14,
+            noveltySurvivalDrop: 0.12,
+            noveltyColorGain: 1.4,
+            stasisDeltaLow: 0.006,
+            stasisDeltaHigh: 0.024,
+            consensusRepel: 0.10,
+            consensusStasisBoost: 2.6,
+            stasisLifeBlend: 0.42,
+            stasisLifeRateBoost: 2.2,
+            stasisColorRateFloor: 0.22,
+            colorRateBase: 0.24,
+            colorRateActScale: 0.95,
+            patternCoupling: 0.84,
+            displayValueBlend: 0.12
+            ,
+            // Core v1 clean-room update parameters
+            coreLRate: 1.0,
+            coreLDiffGain: 1.2,
+            coreLReactionGain: 0.55,
+            coreColorToLGain: 0.15,
+            coreColorRate: 1.0,
+            coreAdoptGain: 1.3,
+            coreRepelGain: 0.45,
+            coreGrowthHueCoupling: 0.9,
+            coreMaxDeltaL: 0.08,
+            coreMaxDeltaAB: 0.08
+        });
+
+        this._lastSourceLockLogSig = '';
         
         this.callbacks = {
             onParamChange,
@@ -98,6 +185,49 @@ export class ControlsManager {
         setupSlider('colorFeedback', 'colorFeedback');
         setupSlider('colorInertia', 'colorInertia');
         setupSlider('sourceDrift', 'sourceDrift');
+        setupSlider('autoTuneAggression', 'autoTuneAggression');
+        setupSlider('autoTuneWeightDrift', 'autoTuneWeightDrift');
+        setupSlider('healthWMotion', 'healthWMotion');
+        setupSlider('healthWPattern', 'healthWPattern');
+        setupSlider('healthWColorStruct', 'healthWColorStruct');
+        setupSlider('healthWColorChange', 'healthWColorChange');
+        setupSlider('healthWFlicker', 'healthWFlicker');
+        setupSlider('healthWUniform', 'healthWUniform');
+        setupSlider('healthWDead', 'healthWDead');
+        setupSlider('healthWSource', 'healthWSource');
+        setupSlider('structuredNoise', 'structuredNoise');
+        setupSlider('mutation', 'mutation');
+        setupSlider('growthHueShift', 'growthHueShift');
+        setupSlider('chromaNoiseMag', 'chromaNoiseMag');
+        setupSlider('colorDiversity', 'colorDiversity');
+        setupSlider('pumpNoiseSpread', 'pumpNoiseSpread');
+        setupSlider('coreLRate', 'coreLRate');
+        setupSlider('coreLDiffGain', 'coreLDiffGain');
+        setupSlider('coreLReactionGain', 'coreLReactionGain');
+        setupSlider('coreColorToLGain', 'coreColorToLGain');
+        setupSlider('coreColorRate', 'coreColorRate');
+        setupSlider('coreAdoptGain', 'coreAdoptGain');
+        setupSlider('coreRepelGain', 'coreRepelGain');
+        setupSlider('coreGrowthHueCoupling', 'coreGrowthHueCoupling');
+        setupSlider('coreMaxDeltaL', 'coreMaxDeltaL');
+        setupSlider('coreMaxDeltaAB', 'coreMaxDeltaAB');
+
+        const autoTuneEnabled = document.getElementById('autoTuneEnabled');
+        if (autoTuneEnabled) {
+            autoTuneEnabled.checked = !!this.params.autoTuneEnabled;
+            autoTuneEnabled.addEventListener('change', (e) => {
+                this.params.autoTuneEnabled = !!e.target.checked;
+                this.callbacks.onParamChange(this.getParams());
+            });
+        }
+        const autoTuneWeightDriftEnabled = document.getElementById('autoTuneWeightDriftEnabled');
+        if (autoTuneWeightDriftEnabled) {
+            autoTuneWeightDriftEnabled.checked = !!this.params.autoTuneWeightDriftEnabled;
+            autoTuneWeightDriftEnabled.addEventListener('change', (e) => {
+                this.params.autoTuneWeightDriftEnabled = !!e.target.checked;
+                this.callbacks.onParamChange(this.getParams());
+            });
+        }
 
         const showSections = document.getElementById('showSections');
         if (showSections) {
@@ -107,6 +237,16 @@ export class ControlsManager {
                 this.callbacks.onParamChange(this.getParams());
             });
         }
+        const coreMinimalMode = document.getElementById('coreMinimalMode');
+        if (coreMinimalMode) {
+            coreMinimalMode.checked = !!this.params.coreMinimalMode;
+            coreMinimalMode.addEventListener('change', (e) => {
+                this.params.coreMinimalMode = !!e.target.checked;
+                this.updatePipelineStatusText();
+                this.callbacks.onParamChange(this.getParams());
+            });
+        }
+        this.updatePipelineStatusText();
 
         // Generate all tunable parameter sliders in the advanced section
         this.generateTunableUI();
@@ -120,31 +260,74 @@ export class ControlsManager {
                 boundarySimplification: 0.30, boundaryStrength: 0.72, kernelWidth: 0.666,
                 hazardRate: 0.14, simSpeed: 0.60, energy: 0.50, colorFeedback: 0.45,
                 colorInertia: 0.35, sourceDrift: 0.15,
-                sourceColorAdherence: 0.40, patternCoupling: 0.68, paletteStability: 0.78
+                sourceColorAdherence: 0.40, patternCoupling: 0.68
             },
             presetRegional: {
                 boundarySimplification: 0.50, boundaryStrength: 0.82, kernelWidth: 0.735,
                 hazardRate: 0.16, simSpeed: 0.63, energy: 0.60, colorFeedback: 0.55,
                 colorInertia: 0.25, sourceDrift: 0.10,
-                sourceColorAdherence: 0.30, patternCoupling: 0.78, paletteStability: 0.82
+                sourceColorAdherence: 0.30, patternCoupling: 0.78
             },
             presetDreamy: {
                 boundarySimplification: 0.26, boundaryStrength: 0.50, kernelWidth: 0.752,
                 hazardRate: 0.26, simSpeed: 0.55, energy: 0.42, colorFeedback: 0.60,
                 colorInertia: 0.45, sourceDrift: 0.30,
-                sourceColorAdherence: 0.12, patternCoupling: 0.56, paletteStability: 0.70
+                sourceColorAdherence: 0.12, patternCoupling: 0.56
             },
             presetWild: {
                 boundarySimplification: 0.80, boundaryStrength: 0.25, kernelWidth: 0.693,
                 hazardRate: 0.72, simSpeed: 0.72, energy: 0.88, colorFeedback: 0.70,
                 colorInertia: 0.10, sourceDrift: 0.50,
-                sourceColorAdherence: 0.02, patternCoupling: 0.92, paletteStability: 0.28
+                sourceColorAdherence: 0.02, patternCoupling: 0.92
             },
             presetSourceMemory: {
                 boundarySimplification: 0.40, boundaryStrength: 0.85, kernelWidth: 0.715,
                 hazardRate: 0.10, simSpeed: 0.63, energy: 0.48, colorFeedback: 0.50,
                 colorInertia: 0.40, sourceDrift: 0.05,
-                sourceColorAdherence: 0.80, patternCoupling: 0.46, paletteStability: 0.86
+                sourceColorAdherence: 0.80, patternCoupling: 0.46
+            },
+            presetTestingAudit: {
+                // Core stance: keep dynamics alive, remove exogenous color forcing.
+                boundarySimplification: 0.35, boundaryStrength: 0.62, kernelWidth: 0.62,
+                hazardRate: 0.00, simSpeed: 0.58, energy: 0.50, colorFeedback: 0.80,
+                colorInertia: 0.35, sourceDrift: 0.00,
+                sourceColorAdherence: 0.15, patternCoupling: 0.75,
+                structuredNoise: 0.00, mutation: 0.00, noiseScale: 0.54,
+                chromaNoiseMag: 0.00, colorDiversity: 0.00, pumpNoiseSpread: 0.00,
+                finalNoiseBase: 0.000, finalNoiseScale: 0.000,
+                basePumpMin: 0.00, basePumpMax: 0.00, activePumpBase: 0.00,
+                activePumpHazScale: 0.00, patchUniBase: 0.00, patchUniScale: 0.00,
+                pumpHazardFloor: 0.00,
+                satBirthBoost: 0.08, cfbBirthGain: 0.14, cfbSurvivalGain: 0.08,
+                cfbThreshold: 0.28
+            },
+            presetLineSeeking: {
+                // Reduce spot bias and seek elongated/labyrinth regimes.
+                boundarySimplification: 0.30, boundaryStrength: 0.55, kernelWidth: 0.39,
+                hazardRate: 0.08, simSpeed: 0.60, energy: 0.55, colorFeedback: 0.65,
+                colorInertia: 0.35, sourceDrift: 0.00,
+                sourceColorAdherence: 0.25, patternCoupling: 0.68,
+                innerFraction: 0.31, radialFalloff: 0.14,
+                transWidth: 0.022, transWidthFloor: 0.018,
+                survivalCeiling: 0.46, birthCeiling: 0.40,
+                structuredNoise: 0.06, mutation: 0.06, noiseScale: 0.50,
+                chromaNoiseMag: 0.015, colorDiversity: 0.015, pumpNoiseSpread: 0.03,
+                basePumpClamp: 0.10
+            },
+            presetCoreMinimal: {
+                // Phase-0 baseline: core cell/history/neighbor dynamics only.
+                coreMinimalMode: true,
+                boundarySimplification: 0.00, boundaryStrength: 0.00, kernelWidth: 0.40,
+                hazardRate: 0.00, simSpeed: 0.78, energy: 0.78, colorFeedback: 0.55,
+                colorInertia: 0.30, sourceDrift: 0.00,
+                sourceColorAdherence: 0.00, patternCoupling: 0.84,
+                externalFieldInfluence: 0.00,
+                structuredNoise: 0.00, mutation: 0.00, noiseLMag: 0.00,
+                chromaNoiseMag: 0.00, colorDiversity: 0.00, pumpNoiseSpread: 0.00,
+                finalNoiseBase: 0.000, finalNoiseScale: 0.000,
+                basePumpMin: 0.00, basePumpMax: 0.00, activePumpBase: 0.00,
+                activePumpHazScale: 0.00, patchUniBase: 0.00, patchUniScale: 0.00,
+                pumpHazardFloor: 0.00
             }
         };
 
@@ -176,11 +359,15 @@ export class ControlsManager {
                 updateSliderUI('colorFeedback', this.params.colorFeedback);
                 updateSliderUI('colorInertia', this.params.colorInertia);
                 updateSliderUI('sourceDrift', this.params.sourceDrift);
-                // Also update the advanced sliders that presets touch
-                this.updateTunableSlider('patternCoupling', this.params.patternCoupling);
-                this.updateTunableSlider('paletteStability', this.params.paletteStability);
+                // Keep the generated advanced UI in sync with whichever params the preset changed.
+                for (const p of TUNABLE_PARAMS) {
+                    this.updateTunableSlider(p.key, this.params[p.key] ?? p.default);
+                }
                 const showSectionsCb = document.getElementById('showSections');
                 if (showSectionsCb) showSectionsCb.checked = !!this.params.showSections;
+                const coreMinimalModeCb = document.getElementById('coreMinimalMode');
+                if (coreMinimalModeCb) coreMinimalModeCb.checked = !!this.params.coreMinimalMode;
+                this.updatePipelineStatusText();
                 this.callbacks.onParamChange(this.getParams());
             });
         });
@@ -354,8 +541,84 @@ export class ControlsManager {
             });
         }
 
+        // Ensure built-in testing configurations are always available.
+        this.ensureDefaultConfigurations();
+
         // Render any existing saved configs
         this.renderSavedConfigs();
+    }
+
+    /** Seed default built-in configurations when missing */
+    ensureDefaultConfigurations() {
+        const defaults = [
+            {
+                name: 'Testing (Coupling Audit)',
+                params: {
+                    boundarySimplification: 0.35, boundaryStrength: 0.62, kernelWidth: 0.62,
+                    hazardRate: 0.00, simSpeed: 0.58, energy: 0.50, colorFeedback: 0.80,
+                    colorInertia: 0.35, sourceDrift: 0.00,
+                    sourceColorAdherence: 0.15, patternCoupling: 0.75,
+                    structuredNoise: 0.00, mutation: 0.00, noiseScale: 0.54,
+                    chromaNoiseMag: 0.00, colorDiversity: 0.00, pumpNoiseSpread: 0.00,
+                    finalNoiseBase: 0.000, finalNoiseScale: 0.000,
+                    basePumpMin: 0.00, basePumpMax: 0.00, activePumpBase: 0.00,
+                    activePumpHazScale: 0.00, patchUniBase: 0.00, patchUniScale: 0.00,
+                    pumpHazardFloor: 0.00,
+                    satBirthBoost: 0.08, cfbBirthGain: 0.14, cfbSurvivalGain: 0.08,
+                    cfbThreshold: 0.28
+                }
+            },
+            {
+                name: 'Line-Seeking',
+                params: {
+                    boundarySimplification: 0.30, boundaryStrength: 0.55, kernelWidth: 0.39,
+                    hazardRate: 0.08, simSpeed: 0.60, energy: 0.55, colorFeedback: 0.65,
+                    colorInertia: 0.35, sourceDrift: 0.00,
+                    sourceColorAdherence: 0.25, patternCoupling: 0.68,
+                    innerFraction: 0.31, radialFalloff: 0.14,
+                    transWidth: 0.022, transWidthFloor: 0.018,
+                    survivalCeiling: 0.46, birthCeiling: 0.40,
+                    structuredNoise: 0.06, mutation: 0.06, noiseScale: 0.50,
+                    chromaNoiseMag: 0.015, colorDiversity: 0.015, pumpNoiseSpread: 0.03,
+                    basePumpClamp: 0.10
+                }
+            },
+            {
+                name: 'Core Minimal Dynamics',
+                params: {
+                    coreMinimalMode: true,
+                    boundarySimplification: 0.00, boundaryStrength: 0.00, kernelWidth: 0.40,
+                    hazardRate: 0.00, simSpeed: 0.78, energy: 0.78, colorFeedback: 0.55,
+                    colorInertia: 0.30, sourceDrift: 0.00,
+                    sourceColorAdherence: 0.00, patternCoupling: 0.84,
+                    externalFieldInfluence: 0.00,
+                    structuredNoise: 0.00, mutation: 0.00, noiseLMag: 0.00,
+                    chromaNoiseMag: 0.00, colorDiversity: 0.00, pumpNoiseSpread: 0.00,
+                    finalNoiseBase: 0.000, finalNoiseScale: 0.000,
+                    basePumpMin: 0.00, basePumpMax: 0.00, activePumpBase: 0.00,
+                    activePumpHazScale: 0.00, patchUniBase: 0.00, patchUniScale: 0.00,
+                    pumpHazardFloor: 0.00
+                }
+            }
+        ];
+
+        const configs = this._loadAllConfigs();
+        let changed = false;
+        for (const d of defaults) {
+            const idx = configs.findIndex(c => c.name === d.name);
+            const builtInEntry = {
+                name: d.name,
+                timestamp: new Date(0).toISOString(),
+                params: d.params
+            };
+            if (idx >= 0) {
+                configs[idx] = builtInEntry;
+            } else {
+                configs.push(builtInEntry);
+            }
+            changed = true;
+        }
+        if (changed) this._saveAllConfigs(configs);
     }
 
     /** Save current params to localStorage under the given name */
@@ -449,7 +712,33 @@ export class ControlsManager {
             { id: 'sourceColorAdherence', key: 'sourceColorAdherence', pct: false },
             { id: 'colorFeedback', key: 'colorFeedback', pct: false },
             { id: 'colorInertia', key: 'colorInertia', pct: false },
-            { id: 'sourceDrift', key: 'sourceDrift', pct: false }
+            { id: 'sourceDrift', key: 'sourceDrift', pct: false },
+            { id: 'autoTuneAggression', key: 'autoTuneAggression', pct: false },
+            { id: 'autoTuneWeightDrift', key: 'autoTuneWeightDrift', pct: false },
+            { id: 'healthWMotion', key: 'healthWMotion', pct: false },
+            { id: 'healthWPattern', key: 'healthWPattern', pct: false },
+            { id: 'healthWColorStruct', key: 'healthWColorStruct', pct: false },
+            { id: 'healthWColorChange', key: 'healthWColorChange', pct: false },
+            { id: 'healthWFlicker', key: 'healthWFlicker', pct: false },
+            { id: 'healthWUniform', key: 'healthWUniform', pct: false },
+            { id: 'healthWDead', key: 'healthWDead', pct: false },
+            { id: 'healthWSource', key: 'healthWSource', pct: false },
+            { id: 'structuredNoise', key: 'structuredNoise', pct: false },
+            { id: 'mutation', key: 'mutation', pct: false },
+            { id: 'growthHueShift', key: 'growthHueShift', pct: false },
+            { id: 'chromaNoiseMag', key: 'chromaNoiseMag', pct: false },
+            { id: 'colorDiversity', key: 'colorDiversity', pct: false },
+            { id: 'pumpNoiseSpread', key: 'pumpNoiseSpread', pct: false },
+            { id: 'coreLRate', key: 'coreLRate', pct: false },
+            { id: 'coreLDiffGain', key: 'coreLDiffGain', pct: false },
+            { id: 'coreLReactionGain', key: 'coreLReactionGain', pct: false },
+            { id: 'coreColorToLGain', key: 'coreColorToLGain', pct: false },
+            { id: 'coreColorRate', key: 'coreColorRate', pct: false },
+            { id: 'coreAdoptGain', key: 'coreAdoptGain', pct: false },
+            { id: 'coreRepelGain', key: 'coreRepelGain', pct: false },
+            { id: 'coreGrowthHueCoupling', key: 'coreGrowthHueCoupling', pct: false },
+            { id: 'coreMaxDeltaL', key: 'coreMaxDeltaL', pct: false },
+            { id: 'coreMaxDeltaAB', key: 'coreMaxDeltaAB', pct: false }
         ];
         for (const { id, key, pct } of coreSliders) {
             const slider = document.getElementById(id);
@@ -470,6 +759,13 @@ export class ControlsManager {
         // Update checkbox
         const showSectionsCb = document.getElementById('showSections');
         if (showSectionsCb) showSectionsCb.checked = !!this.params.showSections;
+        const autoTuneEnabledCb = document.getElementById('autoTuneEnabled');
+        if (autoTuneEnabledCb) autoTuneEnabledCb.checked = !!this.params.autoTuneEnabled;
+        const autoTuneWeightDriftEnabledCb = document.getElementById('autoTuneWeightDriftEnabled');
+        if (autoTuneWeightDriftEnabledCb) autoTuneWeightDriftEnabledCb.checked = !!this.params.autoTuneWeightDriftEnabled;
+        const coreMinimalModeCb = document.getElementById('coreMinimalMode');
+        if (coreMinimalModeCb) coreMinimalModeCb.checked = !!this.params.coreMinimalMode;
+        this.updatePipelineStatusText();
 
         // Update all tunable param sliders
         for (const p of TUNABLE_PARAMS) {
@@ -547,6 +843,11 @@ export class ControlsManager {
     getParams() {
         const energy = this.params.energy;
         const sourceColorAdherence = this.params.sourceColorAdherence;
+        // In minimal mode, boundary strength directly controls structure influence.
+        // In legacy mode, structure remains tied to external-field gating.
+        const sourceStructureInfluence = this.params.coreMinimalMode
+            ? this.params.boundaryStrength
+            : (this.params.externalFieldInfluence ?? 0.0) * sourceColorAdherence;
 
         const activity = Math.min(1.0, 0.08 + energy * 0.92);
         const chaos = Math.min(1.0, 0.04 + energy * 0.96);
@@ -559,7 +860,6 @@ export class ControlsManager {
         const boundaryErosionStrength = 0.55 * (1.0 - bs2);
         const boundaryDiffusionRate = 0.3;
 
-        const edgePump = 0.0;
         const edgeConfinement = 0.25 + bs2 * 0.65;
 
         // Previously-hardcoded section map params: now read from this.params
@@ -570,13 +870,10 @@ export class ControlsManager {
         const sectionStrictness = this.params.sectionStrictness ?? 0.70;
         const sectionClosure = this.params.sectionClosure ?? 0.70;
 
-        const structuredNoise = this.params.hazardRate;
-        const mutation = this.params.hazardRate;
-        const noiseScale = 0.45 + this.params.hazardRate * 0.45;
-        // noisePersistence: direct from slider, no longer overwritten
+        const structuredNoise = this.params.structuredNoise;
+        const mutation = this.params.mutation;
+        const noiseScale = this.params.noiseScale;
         const noisePersistence = this.params.noisePersistence;
-
-        const imagePump = 0.0;
 
         const bs = this.params.boundarySimplification;
         const sectionizerSimplification = Math.max(0.0, Math.min(1.0, bs));
@@ -588,22 +885,22 @@ export class ControlsManager {
             tunables[p.key] = this.params[p.key] ?? p.default;
         }
 
-        return {
+        const result = {
             activity,
             chaos,
             deltaTime,
             radius,
             structuredNoise,
-            randomNoise: structuredNoise,
+            randomNoise: structuredNoise, // kept for frequency engine compat
             noiseScale,
             noisePersistence,
             mutation,
-            imagePump,
-            imageRestore: imagePump,
-            edgeDetail: this.params.edgeFineness,
+            imageRestore: 0.0, // kept for frequency engine compat
+            edgeDetail: this.params.coreMinimalMode
+                ? this.params.boundarySimplification
+                : this.params.edgeFineness,
             sectionizerSimplification,
             edgeSensitivity: this.params.edgeFineness,
-            edgePump,
             edgeConfinement,
             sectionScale,
             tileSize,
@@ -612,8 +909,8 @@ export class ControlsManager {
             sectionStrictness,
             microDetailInfluence,
             sourceColorAdherence,
+            sourceStructureInfluence,
             hazardRate: this.params.hazardRate,
-            paletteStability: this.params.paletteStability,
             boundaryLeakage,
             boundaryReassertionRate,
             boundaryErosionStrength,
@@ -622,9 +919,162 @@ export class ControlsManager {
             colorFeedback: this.params.colorFeedback,
             colorInertia: this.params.colorInertia,
             sourceDrift: this.params.sourceDrift,
+            autoTuneEnabled: !!this.params.autoTuneEnabled,
+            autoTuneAggression: this.params.autoTuneAggression,
+            autoTuneWeightDriftEnabled: !!this.params.autoTuneWeightDriftEnabled,
+            autoTuneWeightDrift: this.params.autoTuneWeightDrift,
+            healthWMotion: this.params.healthWMotion,
+            healthWPattern: this.params.healthWPattern,
+            healthWColorStruct: this.params.healthWColorStruct,
+            healthWColorChange: this.params.healthWColorChange,
+            healthWFlicker: this.params.healthWFlicker,
+            healthWUniform: this.params.healthWUniform,
+            healthWDead: this.params.healthWDead,
+            healthWSource: this.params.healthWSource,
             showSections: this.params.showSections,
+            coreMinimalMode: !!this.params.coreMinimalMode,
             // All tunable params (shader uniforms)
             ...tunables
         };
+
+        if (this.params.coreMinimalMode) {
+            this.applyCoreMinimalOverrides(result);
+        }
+
+        this.logSourceLockBlockers(result);
+        return result;
+    }
+
+    applyCoreMinimalOverrides(params) {
+        // Minimal mode baseline: keep ONLY core CA + boundary/source controls.
+        // sourceColorAdherence and sourceStructureInfluence remain user-controlled.
+        params.externalFieldInfluence = 0.0;
+        params.structuredNoise = 0.0;
+        params.mutation = 0.0;
+        params.noiseLMag = 0.0;
+        params.chromaNoiseMag = 0.0;
+        params.colorDiversity = 0.0;
+        params.pumpNoiseSpread = 0.0;
+        params.finalNoiseBase = 0.0;
+        params.finalNoiseScale = 0.0;
+        params.basePumpMin = 0.0;
+        params.basePumpMax = 0.0;
+        params.activePumpBase = 0.0;
+        params.activePumpHazScale = 0.0;
+        params.patchUniBase = 0.0;
+        params.patchUniScale = 0.0;
+        params.pumpHazardFloor = 0.0;
+        params.sourceDrift = 0.0;
+        params.hazardRate = 0.0;
+    }
+
+    /** Update autotune status text in UI */
+    setAutoTuneStatsText(text) {
+        const el = document.getElementById('autoTuneStats');
+        if (el) el.textContent = text;
+    }
+
+    setAutoTuneKnobScoresText(text) {
+        const el = document.getElementById('autoTuneKnobScores');
+        if (el) el.textContent = text;
+    }
+
+    setPipelineStatusText(text) {
+        const el = document.getElementById('pipelineStatus');
+        if (el) el.textContent = text;
+    }
+
+    updatePipelineStatusText() {
+        const mode = this.params.coreMinimalMode
+            ? 'Core Minimal (core CA + boundary/source only)'
+            : 'Legacy Full Stack';
+        this.setPipelineStatusText(`Pipeline: ${mode}`);
+    }
+
+    /** Set a parameter with clamping and optional callback emit */
+    setParam(key, value, emit = true) {
+        const bounds = this.getParamBounds(key);
+        if (!bounds) return;
+        const clamped = Math.max(bounds.min, Math.min(bounds.max, value));
+        this.params[key] = clamped;
+        this.updateCoreSliderUI(key, clamped);
+        this.updateTunableSlider(key, clamped);
+        if (emit) this.callbacks.onParamChange(this.getParams());
+    }
+
+    /** Nudge a parameter by delta with clamping */
+    nudgeParam(key, delta, emit = true) {
+        const current = this.params[key];
+        if (typeof current !== 'number') return;
+        this.setParam(key, current + delta, emit);
+    }
+
+    emitParamsChanged() {
+        this.callbacks.onParamChange(this.getParams());
+    }
+
+    getParamBounds(key) {
+        const slider = document.getElementById(key);
+        if (slider && slider.type === 'range') {
+            const min = slider.min === '' ? -Infinity : parseFloat(slider.min);
+            const max = slider.max === '' ? Infinity : parseFloat(slider.max);
+            if (!Number.isNaN(min) && !Number.isNaN(max)) {
+                return { min, max };
+            }
+        }
+        const p = TUNABLE_PARAMS.find((tp) => tp.key === key);
+        if (p) return { min: p.min, max: p.max };
+        return null;
+    }
+
+    updateCoreSliderUI(key, value) {
+        const slider = document.getElementById(key);
+        const display = document.getElementById(`${key}Value`);
+        if (slider) slider.value = value;
+        if (!display) return;
+        if (key === 'kernelWidth') {
+            display.textContent = `${(this.kernelWidthFromSlider(value) * 100).toFixed(1)}%`;
+            return;
+        }
+        display.textContent = value.toFixed(2);
+    }
+
+    /** Log parameters that can make "100% source adherence" look non-source. */
+    logSourceLockBlockers(params) {
+        if ((params.sourceColorAdherence ?? 0) < 0.99) return;
+        const blockers = [];
+        const checks = [
+            ['structuredNoise', 0],
+            ['mutation', 0],
+            ['chromaNoiseMag', 0],
+            ['colorDiversity', 0],
+            ['pumpNoiseSpread', 0],
+            ['finalNoiseBase', 0],
+            ['finalNoiseScale', 0],
+            ['basePumpMin', 0],
+            ['basePumpMax', 0],
+            ['activePumpBase', 0],
+            ['activePumpHazScale', 0],
+            ['patchUniBase', 0],
+            ['patchUniScale', 0],
+            ['growthHueShift', 0],
+            ['lSatModulation', 0],
+            ['deadDesaturation', 1],
+            ['chromaFloorMin', 0],
+            ['grayPushMag', 0],
+            ['sourceDrift', 0]
+        ];
+        for (const [key, zero] of checks) {
+            const v = params[key];
+            if (typeof v === 'number' && Math.abs(v - zero) > 1e-6) blockers.push(`${key}=${v.toFixed(4)}`);
+        }
+        const sig = blockers.join('|');
+        if (sig === this._lastSourceLockLogSig) return;
+        this._lastSourceLockLogSig = sig;
+        if (blockers.length === 0) {
+            console.info('[SourceLock] adherence=100% and no active injection/noise blockers detected.');
+        } else {
+            console.warn('[SourceLock] adherence=100% but active non-source drivers:', blockers.join(', '));
+        }
     }
 }

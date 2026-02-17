@@ -275,6 +275,7 @@ export class SmoothLifeEngine {
         gl.uniform1f(gl.getUniformLocation(this.boundaryProgram, 'u_reassertionRate'), params.boundaryReassertionRate ?? 0.12);
         gl.uniform1f(gl.getUniformLocation(this.boundaryProgram, 'u_erosionStrength'), params.boundaryErosionStrength ?? 0.4);
         gl.uniform1f(gl.getUniformLocation(this.boundaryProgram, 'u_diffusionRate'), params.boundaryDiffusionRate ?? 0.3);
+        gl.uniform1f(gl.getUniformLocation(this.boundaryProgram, 'u_sourceStructureInfluence'), params.sourceStructureInfluence ?? 1.0);
 
         // Tunable boundary params
         if (_tunablesByShader.boundary) {
@@ -308,6 +309,7 @@ export class SmoothLifeEngine {
         
         gl.uniform2f(gl.getUniformLocation(this.convolutionProgram, 'u_resolution'), this.width, this.height);
         gl.uniform1f(gl.getUniformLocation(this.convolutionProgram, 'u_radius'), radiusPixels);
+        gl.uniform1f(gl.getUniformLocation(this.convolutionProgram, 'u_sourceStructureInfluence'), params.sourceStructureInfluence ?? 1.0);
 
         // Tunable convolution params
         if (_tunablesByShader.convolution) {
@@ -361,16 +363,12 @@ export class SmoothLifeEngine {
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_time'), this.frameCount * 0.1);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_chaos'), params.chaos);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_activity'), params.activity ?? 0.6);
-        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_randomNoise'), params.randomNoise);
-        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_edgePump'), params.edgePump ?? 0.2);
-        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_imagePump'), params.imagePump ?? 0.08);
-        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_structuredNoise'), params.structuredNoise ?? params.randomNoise ?? 0.0);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_structuredNoise'), params.structuredNoise ?? 0.0);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_mutation'), params.mutation ?? 0.15);
-        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_paletteStability'), params.paletteStability ?? 0.72);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_sectionScale'), params.sectionScale ?? 0.68);
-        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_tileSize'), params.tileSize ?? 0.66);
-        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_edgeAdherence'), params.edgeAdherence ?? 0.45);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_sourceColorAdherence'), params.sourceColorAdherence ?? 0.35);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_sourceStructureInfluence'), params.sourceStructureInfluence ?? 1.0);
+        gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_coreMinimalMode'), params.coreMinimalMode ? 1.0 : 0.0);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_patternCoupling'), params.patternCoupling ?? 0.72);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_colorFeedback'), params.colorFeedback ?? 0.50);
         gl.uniform1f(gl.getUniformLocation(this.transitionProgram, 'u_colorInertia'), params.colorInertia ?? 0.30);
@@ -435,6 +433,20 @@ export class SmoothLifeEngine {
         
         bindQuadAttributes(gl, this.displayQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    /** Read current simulation state texture pixels for analysis/autotune. */
+    readCurrentStatePixels() {
+        const gl = this.gl;
+        const currentFramebuffer = this.currentStateIndex === 0 ? this.stateFramebuffer0 : this.stateFramebuffer1;
+        const size = this.width * this.height * 4;
+        if (!this._readbackPixels || this._readbackPixels.length !== size) {
+            this._readbackPixels = new Uint8Array(size);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, currentFramebuffer);
+        gl.readPixels(0, 0, this.width, this.height, gl.RGBA, gl.UNSIGNED_BYTE, this._readbackPixels);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return this._readbackPixels;
     }
     
     destroy() {

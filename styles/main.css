@@ -230,6 +230,28 @@ button:active {
     border-color: #00ff88;
 }
 
+.preset-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    max-height: 190px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.preset-grid .mode-btn {
+    flex: unset;
+}
+
+.preset-grid::-webkit-scrollbar {
+    width: 6px;
+}
+
+.preset-grid::-webkit-scrollbar-thumb {
+    background: #3a3a3a;
+    border-radius: 4px;
+}
+
 .preset-btn {
     width: calc(50% - 5px);
     margin-right: 10px;
