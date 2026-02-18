@@ -103,6 +103,17 @@ export const TUNABLE_PARAMS = [
     { key: 'colorPocketGain',        default: 0.35, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Color Pocket Gain',  hint: '↑ Reinforces local chroma neighborhoods against global color averaging',                    shader: 'transition' },
 
     // ================================================================
+    //  SOURCE GUIDANCE (STRUCTURAL BIAS, NO OVERLAY)
+    // ================================================================
+
+    { key: 'sourceGuidanceGain',     default: 0.55, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Source Guidance', label: 'Guidance Gain',      hint: '↑ Stronger source-geometry influence on local rule coefficients',                        shader: 'transition' },
+    { key: 'sourceAnisotropy',       default: 1.20, min: 0.0,   max: 4.0,  step: 0.1,   group: 'Source Guidance', label: 'Kernel Anisotropy',  hint: '↑ Kernel elongates more along source orientation where coherence is high',               shader: 'transition' },
+    { key: 'sourceCoherenceFloor',   default: 0.20, min: 0.0,   max: 1.0,  step: 0.02,  group: 'Source Guidance', label: 'Coherence Floor',   hint: 'Minimum coherence required before orientation bias activates strongly',                   shader: 'transition' },
+    { key: 'sourceRidgeBias',        default: 0.35, min: -1.0,  max: 1.0,  step: 0.05,  group: 'Source Guidance', label: 'Ridge Growth Bias', hint: 'Positive: ridges favor growth; negative: ridges favor inhibition',                        shader: 'transition' },
+    { key: 'sourceEdgeFrequency',    default: 0.55, min: 0.0,   max: 1.0,  step: 0.02,  group: 'Source Guidance', label: 'Edge Frequency',    hint: '↑ Use finer details in source edges. ↓ Use broader/coarser structure',                  shader: 'existing' },
+    { key: 'showGuidanceEdges',      default: false,                                   group: 'Source Guidance', label: 'Show Guidance Edges', hint: 'Overlay the source guidance edges used by the kernel',                                    shader: 'display', control: 'checkbox' },
+
+    // ================================================================
     //  SYSTEM PARAMETERS
     // ================================================================
     

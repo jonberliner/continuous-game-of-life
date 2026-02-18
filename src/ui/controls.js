@@ -109,10 +109,14 @@ export class ControlsManager {
         for (const param of TUNABLE_PARAMS) {
             const slider = document.getElementById(`slider-${param.key}`);
             if (slider && param.key in this.params) {
-                slider.value = this.params[param.key];
-                const valueDisplay = slider.previousElementSibling;
-                if (valueDisplay) {
-                    valueDisplay.textContent = this.params[param.key].toFixed(param.step < 0.01 ? 3 : 2);
+                if (param.control === 'checkbox') {
+                    slider.checked = !!this.params[param.key];
+                } else {
+                    slider.value = this.params[param.key];
+                    const valueDisplay = slider.previousElementSibling;
+                    if (valueDisplay) {
+                        valueDisplay.textContent = this.params[param.key].toFixed(param.step < 0.01 ? 3 : 2);
+                    }
                 }
             }
         }
@@ -247,7 +251,7 @@ export class ControlsManager {
         content.className = 'param-group-content';
         
         for (const param of params) {
-            const control = this.createSliderControl(param);
+            const control = this.createParamControl(param);
             content.appendChild(control);
         }
         
@@ -293,6 +297,44 @@ export class ControlsManager {
         
         return wrapper;
     }
+
+    createCheckboxControl(param) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'slider-control';
+
+        const label = document.createElement('label');
+        label.textContent = param.label;
+        label.title = param.hint;
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `slider-${param.key}`;
+        checkbox.checked = !!this.params[param.key];
+        checkbox.style.marginTop = '6px';
+        checkbox.style.marginBottom = '6px';
+
+        checkbox.onchange = (e) => {
+            this.params[param.key] = !!e.target.checked;
+            this.onParamChange(this.params);
+        };
+
+        const hint = document.createElement('div');
+        hint.className = 'slider-hint';
+        hint.textContent = param.hint;
+
+        wrapper.appendChild(label);
+        wrapper.appendChild(checkbox);
+        wrapper.appendChild(hint);
+
+        return wrapper;
+    }
+
+    createParamControl(param) {
+        if (param.control === 'checkbox') {
+            return this.createCheckboxControl(param);
+        }
+        return this.createSliderControl(param);
+    }
     
     getParams() {
         return this.params;
@@ -303,11 +345,15 @@ export class ControlsManager {
                 this.params[key] = value;
             const slider = document.getElementById(`slider-${key}`);
             if (slider) {
-            slider.value = value;
-                const valueDisplay = slider.previousElementSibling;
-                if (valueDisplay) {
-                    const param = TUNABLE_PARAMS.find(p => p.key === key);
-                    valueDisplay.textContent = value.toFixed(param.step < 0.01 ? 3 : 2);
+                const param = TUNABLE_PARAMS.find(p => p.key === key);
+                if (param && param.control === 'checkbox') {
+                    slider.checked = !!value;
+                } else {
+                    slider.value = value;
+                    const valueDisplay = slider.previousElementSibling;
+                    if (valueDisplay && param) {
+                        valueDisplay.textContent = value.toFixed(param.step < 0.01 ? 3 : 2);
+                    }
                 }
             }
             this.onParamChange(this.params);

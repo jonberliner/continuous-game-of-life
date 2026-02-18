@@ -1142,3 +1142,564 @@ If it still trends stripey, next move is a strict two-scale chroma kernel (`loca
 
 ---
 
+_**User (2026-02-16 04:15Z)**_
+
+okay!  now I think we're ready for the big one - source image.
+
+propose the best way to have it.  again, the effect we are trying to achive is that we'll have these things, but the source image biases how they move.  in affect it will look like a loosely stylized thing of the source.  NO HACKS  NO OVERLAYS.  do you understand the spirit of what we're trying to achieve?
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Proposing principled source-driven design**</details></think>
+
+---
+
+Yes — that spirit is exactly clear:
+
+- **No overlays**
+- **No pulling pixels back to the source**
+- **Source should bias dynamics, not dictate appearance**
+- Result should be a living CA that *feels like* the source as a loose stylization
+
+## Best Architecture (Principled)
+
+Use source image only to build **static guidance fields** that modulate rules, never as a target state.
+
+### 1) Build Source Guidance Fields once (or on image load)
+
+From source luminance/edges, compute textures:
+
+- `theta(x)`: dominant local orientation (structure tensor angle)
+- `coherence(x)`: confidence in that orientation (0 flat, 1 line-like)
+- `ridge(x)`: edge/ridge strength
+- `dist(x)`: soft distance-to-ridge field
+- `complexity(x)`: local texture complexity
+
+These are **geometry priors**, not visual overlays.
+
+---
+
+### 2) Bias kernel dynamics through coefficients, not state blending
+
+In transition/convolution, use guidance fields to modulate local rule parameters:
+
+- anisotropic kernel shape (elongate sampling along `theta` where coherence high)
+- local inhibition/growth balance
+- local timestep / excitability
+- pocket persistence near ridges or corners
+
+So source affects **how cells interact locally**, not what value they should equal.
+
+---
+
+### 3) Add directional flow bias (small, bounded)
+
+Use a weak velocity field derived from source geometry:
+
+- tangent flow along contours in coherent regions
+- optional weak normal drift in low-coherence regions
+
+This makes motifs travel in source-consistent ways (hair/cloth/edges), but still emergent.
+
+---
+
+### 4) Hard rule: never use direct source-state attraction in evolution
+
+Do **not** do terms like:
+- `L += k*(L_src - L)`
+- `ab += k*(ab_src - ab)`
+
+Those create ghosting and frozen outlines (the hack failure mode).
+
+Use only:
+- source-initialized state
+- source-derived coefficient fields
+
+---
+
+## Minimal math sketch
+
+At each pixel, use:
+
+- `params_local = f(params_global, theta, coherence, ridge, dist, complexity)`
+- `dState = CA_rule(state, neighborhood; params_local)`
+- optional weak advection: `state(x + v(x)*dt)`
+
+where `v(x)` comes from source orientation and `|v|` is capped small.
+
+That gives “source-biased emergence,” not source reconstruction.
+
+---
+
+## What this will look like (when done right)
+
+- Local entities still form/disappear from CA rules
+- Movement aligns with source structure (contours, regions)
+- Stylized resemblance persists without static tracing
+- Different seeds produce different runs, same “character”
+
+---
+
+## Concrete implementation plan in your codebase
+
+1. Add preprocessing pass to generate 3–5 guidance textures  
+2. Add anisotropic neighborhood sampling in kernel path  
+3. Add local parameter modulation from guidance textures  
+4. Add bounded geometry flow field (optional pass)  
+5. Tune with constraints: no source-state blending terms, ever
+
+If you want, I’ll implement **Step 1 + Step 2 now** in Core V1 as the first real source integration pass.
+
+---
+
+_**User (2026-02-16 04:15Z)**_
+
+yes. implement.  update and add to the extension roadmap, then implement
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Planning anisotropic guidance implementation**</details></think>
+
+---
+
+Understood. I’ll do this in two concrete steps right now: update `SMOOTHLIFE_EXTENSION_ROADMAP.md` with a principled source-guidance design, then implement it in Core V1 as guidance fields + anisotropic kernel bias (no source-state pull, no overlays).
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Adding tunable parameters patch**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning helper function patch**</details></think>
+
+---
+
+I’ve updated the roadmap and added source-guidance controls. Next I’m wiring a real guidance texture pipeline in `coreV1Engine` (computed from source structure tensor fields) and feeding it to the shader.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Updating WebGL initialization and uniforms**</details></think>
+
+---
+
+The model made no changes to the file.
+
+---
+
+<think><details><summary>Thought Process</summary>**Identifying relevant patch ranges**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js
+
+---
+
+
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning patch for texture handling**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning shader uniform refactor**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning anisotropic sampling patch**</details></think>
+
+---
+
+I’m now in the shader pass adding source guidance properly: orientation/coherence/ridge sampling, anisotropic kernel deformation, and local gain modulation from those fields.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Patching main function start**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Patching default color values**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Running lints on edits**</details></think>
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 4 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js`
+- `/Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Checking shader variable usage**</details></think>
+
+---
+
+Tool use: **rg**
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning anisotropy check**</details></think>
+
+---
+
+Tool use: **rg**
+
+---
+
+
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Create SmoothLife extension roadmap with phased non-destructive migration
+- [x] Add kernel-hybrid tunable parameters and engine uniform plumbing
+- [x] Implement SmoothLife-style m/n kernel sampling and blendable L update term in transition shader
+- [x] Run lints for changed files and fix issues
+- [x] Add bidirectional kernel color<->structure coupling and expose controls
+- [x] Update extension roadmap with principled source guidance integration and guardrails
+- [x] Implement source guidance texture generation (orientation/coherence/ridge) in CoreV1 engine reset path
+- [x] Implement guidance-driven anisotropic SmoothLife sampling and local gain modulation in transition shader
+- [x] Run lint checks on modified roadmap, params, engine, and shader files
+
+---
+
+<think><details><summary>Thought Process</summary>**Summarizing changes and testing advice**</details></think>
+
+---
+
+Implemented. This is now a real **source-biased dynamics** path, not an overlay and not source pullback.
+
+## What I updated
+
+- Roadmap updated: `SMOOTHLIFE_EXTENSION_ROADMAP.md`
+  - Added explicit Phase D1 implementation details and the hard guardrail:
+  - **no `mix(state, source)` style attraction terms**
+
+- New controls in `src/ui/tunableParams.js` under **Source Guidance**
+  - `sourceGuidanceGain`
+  - `sourceAnisotropy`
+  - `sourceCoherenceFloor`
+  - `sourceRidgeBias`
+
+- Engine-side source guidance field generation in `src/core/coreV1Engine.js`
+  - On reset, computes a guidance texture from source luminance:
+    - `R,G`: local tangent orientation vector
+    - `B`: local coherence (structure confidence)
+    - `A`: ridge strength
+  - Uploads this as `sourceGuidanceTexture`
+  - Binds it each transition pass as `u_sourceGuidance`
+  - Passes new source-guidance uniforms
+
+- Shader integration in `src/render/coreV1Shaders.js`
+  - Added `u_sourceGuidance` + source guidance uniforms
+  - SmoothLife kernel sampling is now **anisotropic** where source coherence is high:
+    - neighborhood stretches along source orientation
+  - Kernel growth/inhibition gains are modulated locally by source ridge/coherence fields
+
+## Why this matches your spirit
+
+- Source does **not** repaint pixels.
+- Source does **not** force state values.
+- Source only biases local interaction geometry and coefficients.
+- The CA remains autonomous and emergent, but moves/organizes with source structure priors.
+
+## How to try it quickly
+
+- Keep kernel path on (`kernelBlend = 1.0` if you want to isolate it)
+- Start with:
+  - `sourceGuidanceGain = 0.55`
+  - `sourceAnisotropy = 1.2`
+  - `sourceCoherenceFloor = 0.2`
+  - `sourceRidgeBias = 0.35`
+- Then vary:
+  - higher `sourceAnisotropy` => stronger contour-following shape bias
+  - higher `sourceGuidanceGain` => stronger source-structure influence
+  - negative `sourceRidgeBias` => ridges inhibit instead of promote
+
+## Next best step
+
+Next I can add **guidance-driven advection** (weak tangent flow field from the same source guidance texture) so motifs not only form with source geometry but also *move along it* in a controlled, non-hacky way.
+
+---
+
+_**User (2026-02-16 04:15Z)**_
+
+I'm not understanding these toggles and they're not intuitive.  I figured when source influence go higher, the patterns would seem to emerge as approimating the image (the black blobs?  is that the effect you're looking for?  or the color too?)
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Clarifying toggle effects**</details></think>
+
+---
+
+Great question. Right now, the source guidance is primarily a **structure bias**, not a direct “repaint the source” control.
+
+### What “higher source influence” should mean (in this implementation)
+
+- It should make **motion and shape formation align with source geometry** (edges/orientation).
+- It should **not** force exact source reconstruction.
+- So yes: you should mostly see source-like **blob/layout tendencies in L (dark/bright massing)** first.
+- Color is currently secondary: it’s coupled, but not yet “source palette matching.”
+
+So if you expected “higher source influence = clearer approximate source image,” that’s reasonable — but the current controls are technical and indirect.
+
+## Intuitive mapping of current toggles
+
+- `Guidance Gain`  
+  Overall strength of source geometry bias on dynamics.
+- `Kernel Anisotropy`  
+  How stretched local interactions are along source orientation.
+- `Coherence Floor`  
+  How strong local orientation must be before guidance kicks in.
+- `Ridge Growth Bias`  
+  Whether source ridges tend to grow (`+`) or suppress (`-`) activity.
+
+## What effect to look for right now
+
+- **Luminance structure** (dark/bright pockets, contours) should resemble source layout loosely.
+- **Not** literal edges, and **not** direct color matching.
+- If it’s too abstract, increase `Guidance Gain` and lower `Coherence Floor`.
+- If it becomes streaky, reduce `Kernel Anisotropy`.
+
+## Honest gap
+
+You’re also right that these are not intuitive.  
+I can make this much cleaner by replacing the 4 toggles with 3 artist-facing controls:
+
+- `Source Resemblance`
+- `Flow Along Image`
+- `Abstraction`
+
+…and map those internally to the technical params. That should match your mental model much better.
+
+---
+
+_**User (2026-02-16 04:15Z)**_
+
+is there a way we can have a checkbox to overlay the edges your using?  and a way to slide for higher-lower frequency edges uses?  it's a natural image - it's hard for me to tell if it's following the edges, just it was too complex
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Planning overlay and controls implementation**</details></think>
+
+---
+
+Makes sense. I’ll add both: a real **edge overlay checkbox** so you can visually verify guidance, and a **source edge frequency slider** that recomputes the guidance field at coarse↔fine scales. I’m implementing this now in UI + guidance generation + display shader.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Adding checkbox support**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Updating frequency parameter handling**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Extending WebGL class with guidance handling**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Modifying shader uniforms and texture binding**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Patching core rendering method**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Confirming shader uniform setup**</details></think>
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 4 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/controls.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Updating roadmap for features**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Outlining response and checklist**</details></think>
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Create SmoothLife extension roadmap with phased non-destructive migration
+- [x] Add kernel-hybrid tunable parameters and engine uniform plumbing
+- [x] Implement SmoothLife-style m/n kernel sampling and blendable L update term in transition shader
+- [x] Run lints for changed files and fix issues
+- [x] Add bidirectional kernel color<->structure coupling and expose controls
+- [x] Update extension roadmap with principled source guidance integration and guardrails
+- [x] Implement source guidance texture generation (orientation/coherence/ridge) in CoreV1 engine reset path
+- [x] Implement guidance-driven anisotropic SmoothLife sampling and local gain modulation in transition shader
+- [x] Run lint checks on modified roadmap, params, engine, and shader files
+- [x] Add source guidance edge overlay checkbox in display shader and controls
+- [x] Add source edge frequency slider and live guidance texture recompute
+
+---
+
+Implemented — both features are now in.
+
+### What you now have
+
+- **Checkbox:** `Show Guidance Edges`
+  - In the `Source Guidance` group
+  - Overlays the exact ridge field used for source guidance (orange overlay)
+
+- **Slider:** `Edge Frequency`
+  - Also in `Source Guidance`
+  - `0.0` = coarse / low-frequency edges (bigger structural contours)
+  - `1.0` = fine / high-frequency edges (more detail/texture edges)
+  - Recomputes guidance **live** as you drag
+
+### Files changed
+
+- `src/ui/tunableParams.js`
+  - Added `sourceEdgeFrequency`
+  - Added `showGuidanceEdges` (checkbox control)
+
+- `src/ui/controls.js`
+  - Added checkbox control support (`param.control === 'checkbox'`)
+
+- `src/core/coreV1Engine.js`
+  - Guidance texture now updates when `sourceEdgeFrequency` changes
+  - Display pass now receives guidance texture + overlay toggle
+
+- `src/render/coreV1Shaders.js`
+  - Display shader can overlay guidance edges
+
+- `SMOOTHLIFE_EXTENSION_ROADMAP.md`
+  - Added these as source-debug capabilities in Phase D1
+
+### How to use it
+
+1. Turn on `Show Guidance Edges`
+2. Move `Edge Frequency` low↔high
+3. Watch which edge map the system is actually using
+4. Then adjust `Guidance Gain` / `Kernel Anisotropy` while overlay is on
+
+If you want, next I can also add an **overlay mode dropdown** (`edges`, `coherence`, `orientation`) so you can inspect all guidance channels, not just ridges.
+
+---
+

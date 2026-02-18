@@ -68,12 +68,33 @@ Goal: integrate source content as structure guidance, not continuous attractor p
 
 Planned work:
 - Keep source as initial condition.
-- Optional weak, decaying anisotropy from source edges.
+- Build source guidance fields (orientation, coherence, ridge strength).
+- Use guidance fields to modulate kernel geometry and local rule coefficients.
+- Keep hard constraint: never blend CA state back toward source pixel values.
 - Optional sparse anchor regions instead of per-pixel pull.
 
 Success criteria:
 - Stylization remains free-running while preserving useful source geometry cues.
 - No frozen source-outline bias.
+
+### Phase D1 - Implemented (current)
+
+Implemented in Core V1:
+- Precompute a static source guidance texture from source luminance:
+  - `RG`: local tangent orientation vector
+  - `B`: local coherence (structure confidence)
+  - `A`: ridge strength
+- Added source-debug visualization controls:
+  - Guidance edge overlay checkbox
+  - Edge frequency slider (coarse to fine guidance extraction)
+- Feed guidance texture to transition shader every frame.
+- Add anisotropic SmoothLife neighborhood sampling:
+  - kernel stretches along source orientation where coherence is high
+  - isotropic behavior remains in low-coherence regions
+- Add local kernel gain modulation from ridge/coherence fields.
+
+Non-negotiable guardrail preserved:
+- No source-state attraction terms (`state <- mix(state, source)`), overlays, or pixel pull-back.
 
 ## Phase E - Search-Assisted Rule Discovery
 

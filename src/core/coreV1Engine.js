@@ -14,6 +14,151 @@ import {
     bindQuadAttributes
 } from '../render/webglUtils.js';
 
+function clamp01(x) {
+    return Math.max(0, Math.min(1, x));
+}
+
+function computeSourceGuidanceTextureData(imgData, width, height, edgeFrequency = 0.55) {
+    const size = width * height;
+    const lum = new Float32Array(size);
+    const lumBlur = new Float32Array(size);
+    const lumGuidance = new Float32Array(size);
+    const gx = new Float32Array(size);
+    const gy = new Float32Array(size);
+    const coherence = new Float32Array(size);
+    const ridge = new Float32Array(size);
+    const out = new Uint8Array(size * 4);
+
+    const src = imgData.data;
+    for (let i = 0, p = 0; i < size; i++, p += 4) {
+        const r = src[p] / 255.0;
+        const g = src[p + 1] / 255.0;
+        const b = src[p + 2] / 255.0;
+        lum[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+    }
+
+    const idx = (x, y) => y * width + x;
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
+                lumBlur[idx(x, y)] = lum[idx(x, y)];
+                continue;
+            }
+            let sum = 0.0;
+            for (let oy = -1; oy <= 1; oy++) {
+                for (let ox = -1; ox <= 1; ox++) {
+                    sum += lum[idx(x + ox, y + oy)];
+                }
+            }
+            lumBlur[idx(x, y)] = sum / 9.0;
+        }
+    }
+    const ef = clamp01(edgeFrequency);
+    for (let i = 0; i < size; i++) {
+        lumGuidance[i] = lumBlur[i] * (1.0 - ef) + lum[i] * ef;
+    }
+
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+            const i00 = idx(x - 1, y - 1);
+            const i01 = idx(x, y - 1);
+            const i02 = idx(x + 1, y - 1);
+            const i10 = idx(x - 1, y);
+            const i12 = idx(x + 1, y);
+            const i20 = idx(x - 1, y + 1);
+            const i21 = idx(x, y + 1);
+            const i22 = idx(x + 1, y + 1);
+
+            const sx =
+                -lumGuidance[i00] - 2.0 * lumGuidance[i10] - lumGuidance[i20] +
+                lumGuidance[i02] + 2.0 * lumGuidance[i12] + lumGuidance[i22];
+            const sy =
+                -lumGuidance[i00] - 2.0 * lumGuidance[i01] - lumGuidance[i02] +
+                lumGuidance[i20] + 2.0 * lumGuidance[i21] + lumGuidance[i22];
+
+            const i = idx(x, y);
+            gx[i] = sx;
+            gy[i] = sy;
+        }
+    }
+
+    let maxGrad = 1.0e-6;
+    for (let i = 0; i < size; i++) {
+        const gmag = Math.hypot(gx[i], gy[i]);
+        if (gmag > maxGrad) maxGrad = gmag;
+    }
+
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+            let jxx = 0.0;
+            let jyy = 0.0;
+            let jxy = 0.0;
+            for (let oy = -1; oy <= 1; oy++) {
+                for (let ox = -1; ox <= 1; ox++) {
+                    const ii = idx(x + ox, y + oy);
+                    const gxx = gx[ii];
+                    const gyy = gy[ii];
+                    jxx += gxx * gxx;
+                    jyy += gyy * gyy;
+                    jxy += gxx * gyy;
+                }
+            }
+            jxx /= 9.0;
+            jyy /= 9.0;
+            jxy /= 9.0;
+
+            const tr = jxx + jyy + 1.0e-8;
+            const aniso = Math.sqrt((jxx - jyy) * (jxx - jyy) + 4.0 * jxy * jxy);
+            const c = clamp01(aniso / tr);
+
+            const theta = 0.5 * Math.atan2(2.0 * jxy, jxx - jyy);
+            const tx = Math.cos(theta + Math.PI * 0.5);
+            const ty = Math.sin(theta + Math.PI * 0.5);
+
+            const i = idx(x, y);
+            coherence[i] = c;
+            ridge[i] = clamp01(Math.hypot(gx[i], gy[i]) / maxGrad);
+
+            out[i * 4] = Math.floor(clamp01(tx * 0.5 + 0.5) * 255.0);
+            out[i * 4 + 1] = Math.floor(clamp01(ty * 0.5 + 0.5) * 255.0);
+            out[i * 4 + 2] = Math.floor(c * 255.0);
+            out[i * 4 + 3] = Math.floor(ridge[i] * 255.0);
+        }
+    }
+
+    // Fill boundary pixels from nearest interior to avoid undefined edges.
+    for (let x = 0; x < width; x++) {
+        const top = idx(x, 0);
+        const topSrc = idx(Math.min(width - 2, Math.max(1, x)), 1);
+        const bot = idx(x, height - 1);
+        const botSrc = idx(Math.min(width - 2, Math.max(1, x)), height - 2);
+        out[top * 4] = out[topSrc * 4];
+        out[top * 4 + 1] = out[topSrc * 4 + 1];
+        out[top * 4 + 2] = out[topSrc * 4 + 2];
+        out[top * 4 + 3] = out[topSrc * 4 + 3];
+        out[bot * 4] = out[botSrc * 4];
+        out[bot * 4 + 1] = out[botSrc * 4 + 1];
+        out[bot * 4 + 2] = out[botSrc * 4 + 2];
+        out[bot * 4 + 3] = out[botSrc * 4 + 3];
+    }
+    for (let y = 0; y < height; y++) {
+        const left = idx(0, y);
+        const leftSrc = idx(1, Math.min(height - 2, Math.max(1, y)));
+        const right = idx(width - 1, y);
+        const rightSrc = idx(width - 2, Math.min(height - 2, Math.max(1, y)));
+        out[left * 4] = out[leftSrc * 4];
+        out[left * 4 + 1] = out[leftSrc * 4 + 1];
+        out[left * 4 + 2] = out[leftSrc * 4 + 2];
+        out[left * 4 + 3] = out[leftSrc * 4 + 3];
+        out[right * 4] = out[rightSrc * 4];
+        out[right * 4 + 1] = out[rightSrc * 4 + 1];
+        out[right * 4 + 2] = out[rightSrc * 4 + 2];
+        out[right * 4 + 3] = out[rightSrc * 4 + 3];
+    }
+
+    return out;
+}
+
 export class CoreV1Engine {
     constructor(canvas, width, height, originalImageData) {
         this.width = width;
@@ -51,6 +196,7 @@ export class CoreV1Engine {
         this.stateTexture0 = createTexture(gl, this.width, this.height, this.originalImageData);
         this.stateTexture1 = createTexture(gl, this.width, this.height);
         this.convTexture = createTexture(gl, this.width, this.height);
+        this.sourceGuidanceTexture = createTexture(gl, this.width, this.height);
 
         this.stateFramebuffer0 = createFramebuffer(gl, this.stateTexture0);
         this.stateFramebuffer1 = createFramebuffer(gl, this.stateTexture1);
@@ -81,6 +227,11 @@ export class CoreV1Engine {
             ctx.drawImage(this.originalImageData, 0, 0, this.width, this.height);
             imgData = ctx.getImageData(0, 0, this.width, this.height);
         }
+        this.guidanceSourceImageData = new ImageData(
+            new Uint8ClampedArray(imgData.data),
+            imgData.width,
+            imgData.height
+        );
         
         // Convert RGB to (L, a, b, M) where M starts equal to L
         for (let i = 0; i < imgData.data.length; i += 4) {
@@ -117,14 +268,42 @@ export class CoreV1Engine {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imgData);
         gl.bindTexture(gl.TEXTURE_2D, this.stateTexture1);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imgData);
+
+        this._lastGuidanceEdgeFrequency = null;
+        this.updateSourceGuidanceTexture(0.55);
         
         this.currentStateIndex = 0;
         this.frameCount = 0;
     }
 
+    updateSourceGuidanceTexture(edgeFrequency) {
+        if (!this.guidanceSourceImageData) return;
+        const freq = Math.max(0.0, Math.min(1.0, edgeFrequency ?? 0.55));
+        const data = computeSourceGuidanceTextureData(this.guidanceSourceImageData, this.width, this.height, freq);
+        const gl = this.gl;
+        gl.bindTexture(gl.TEXTURE_2D, this.sourceGuidanceTexture);
+        gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            this.width,
+            this.height,
+            0,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            data
+        );
+        this._lastGuidanceEdgeFrequency = freq;
+    }
+
     step(params) {
         const gl = this.gl;
         this.frameCount++;
+        this.lastParams = params;
+        const guidanceFreq = params.sourceEdgeFrequency ?? 0.55;
+        if (this._lastGuidanceEdgeFrequency === null || Math.abs(guidanceFreq - this._lastGuidanceEdgeFrequency) > 1.0e-4) {
+            this.updateSourceGuidanceTexture(guidanceFreq);
+        }
         const current = this.currentStateIndex === 0 ? this.stateTexture0 : this.stateTexture1;
         const nextFB = this.currentStateIndex === 0 ? this.stateFramebuffer1 : this.stateFramebuffer0;
 
@@ -208,8 +387,12 @@ export class CoreV1Engine {
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelSurvivalWidth'), params.kernelSurvivalWidth ?? 0.22);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelColorToLGain'), params.kernelColorToLGain ?? 0.35);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelLToColorGain'), params.kernelLToColorGain ?? 0.40);
-        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_colorWaveDamping'), params.colorWaveDamping ?? 0.55);
-        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_colorPocketGain'), params.colorPocketGain ?? 0.50);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_colorWaveDamping'), params.colorWaveDamping ?? 0.75);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_colorPocketGain'), params.colorPocketGain ?? 0.35);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_sourceGuidanceGain'), params.sourceGuidanceGain ?? 0.55);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_sourceAnisotropy'), params.sourceAnisotropy ?? 1.20);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_sourceCoherenceFloor'), params.sourceCoherenceFloor ?? 0.20);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_sourceRidgeBias'), params.sourceRidgeBias ?? 0.35);
         
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_frameCount'), this.frameCount);
 
@@ -222,6 +405,9 @@ export class CoreV1Engine {
         gl.activeTexture(gl.TEXTURE2);
         gl.bindTexture(gl.TEXTURE_2D, this.originalTexture);
         gl.uniform1i(gl.getUniformLocation(this.transProgram, 'u_originalImage'), 2);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, this.sourceGuidanceTexture);
+        gl.uniform1i(gl.getUniformLocation(this.transProgram, 'u_sourceGuidance'), 3);
         bindQuadAttributes(gl, this.transQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
 
@@ -240,6 +426,11 @@ export class CoreV1Engine {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, current);
         gl.uniform1i(gl.getUniformLocation(this.displayProgram, 'u_texture'), 0);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.sourceGuidanceTexture);
+        gl.uniform1i(gl.getUniformLocation(this.displayProgram, 'u_sourceGuidance'), 1);
+        const showGuidanceEdges = this.lastParams && this.lastParams.showGuidanceEdges ? 1.0 : 0.0;
+        gl.uniform1f(gl.getUniformLocation(this.displayProgram, 'u_showGuidanceEdges'), showGuidanceEdges);
         
         bindQuadAttributes(gl, this.displayQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -265,6 +456,7 @@ export class CoreV1Engine {
         gl.deleteTexture(this.stateTexture0);
         gl.deleteTexture(this.stateTexture1);
         gl.deleteTexture(this.convTexture);
+        gl.deleteTexture(this.sourceGuidanceTexture);
         gl.deleteFramebuffer(this.stateFramebuffer0);
         gl.deleteFramebuffer(this.stateFramebuffer1);
         gl.deleteFramebuffer(this.convFramebuffer);

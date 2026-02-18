@@ -11,6 +11,8 @@ void main() {
 export const coreV1DisplayShader = `
 precision highp float;
 uniform sampler2D u_texture;
+uniform sampler2D u_sourceGuidance;
+uniform float u_showGuidanceEdges;
 varying vec2 v_texCoord;
 
 vec3 hsv2rgb(vec3 c) {
@@ -30,6 +32,9 @@ void main() {
     float h = fract(atan(b, a) / 6.28318530718);
     
     vec3 rgb = hsv2rgb(vec3(h, s, clamp(L, 0.02, 0.98)));
+    vec4 guidance = texture2D(u_sourceGuidance, v_texCoord);
+    float edgeMask = smoothstep(0.22, 0.72, guidance.a) * clamp(u_showGuidanceEdges, 0.0, 1.0);
+    rgb = mix(rgb, vec3(1.0, 0.25, 0.05), edgeMask * 0.75);
     gl_FragColor = vec4(rgb, 1.0);
 }
 `;
@@ -101,6 +106,7 @@ precision highp float;
 uniform sampler2D u_currentState;
 uniform sampler2D u_convolution;
 uniform sampler2D u_originalImage;
+uniform sampler2D u_sourceGuidance;
 uniform vec2 u_resolution;
 uniform float u_radius;
 uniform float u_deltaTime;
@@ -168,6 +174,10 @@ uniform float u_kernelColorToLGain;
 uniform float u_kernelLToColorGain;
 uniform float u_colorWaveDamping;
 uniform float u_colorPocketGain;
+uniform float u_sourceGuidanceGain;
+uniform float u_sourceAnisotropy;
+uniform float u_sourceCoherenceFloor;
+uniform float u_sourceRidgeBias;
 
 uniform float u_frameCount;
 
@@ -211,10 +221,16 @@ float sigma_mix(float x, float y, float m, float width) {
     return mix(x, y, k);
 }
 
-vec2 sample_smoothlife_mn(vec2 uv) {
+vec2 sample_smoothlife_mn(vec2 uv, vec2 sourceDir, float sourceCoherence) {
     vec2 px = 1.0 / u_resolution;
     float outerRadius = max(1.0, u_radius);
     float innerRadius = outerRadius * clamp(u_kernelInnerRatio, 0.05, 0.95);
+    float coherenceGate = smoothstep(u_sourceCoherenceFloor, 1.0, sourceCoherence);
+    float anisotropy = 1.0 + coherenceGate * u_sourceGuidanceGain * u_sourceAnisotropy;
+    float axisLong = clamp(anisotropy, 1.0, 6.0);
+    float axisShort = 1.0 / axisLong;
+    vec2 dir = length(sourceDir) > 1.0e-5 ? normalize(sourceDir) : vec2(1.0, 0.0);
+    vec2 nrm = vec2(-dir.y, dir.x);
 
     float mSum = 0.0;
     float nSum = 0.0;
@@ -230,7 +246,9 @@ vec2 sample_smoothlife_mn(vec2 uv) {
         float t = (fi + 0.5) / float(N_INNER);
         float rr = sqrt(t) * innerRadius;
         float ang = fi * GOLD;
-        vec2 pos = uv + vec2(cos(ang), sin(ang)) * rr * px;
+        vec2 circle = vec2(cos(ang), sin(ang));
+        vec2 ellipse = dir * (dot(circle, dir) * axisLong) + nrm * (dot(circle, nrm) * axisShort);
+        vec2 pos = uv + ellipse * rr * px;
         float nL = texture2D(u_currentState, pos).r;
         mSum += nL;
         mCount += 1.0;
@@ -241,7 +259,9 @@ vec2 sample_smoothlife_mn(vec2 uv) {
         float t = (fi + 0.5) / float(N_RING);
         float rr = innerRadius + (outerRadius - innerRadius) * t;
         float ang = fi * GOLD * 1.61803398875;
-        vec2 pos = uv + vec2(cos(ang), sin(ang)) * rr * px;
+        vec2 circle = vec2(cos(ang), sin(ang));
+        vec2 ellipse = dir * (dot(circle, dir) * axisLong) + nrm * (dot(circle, nrm) * axisShort);
+        vec2 pos = uv + ellipse * rr * px;
         float nL = texture2D(u_currentState, pos).r;
         nSum += nL;
         nCount += 1.0;
@@ -327,7 +347,10 @@ vec3 abv2rgb(vec2 ab, float v) {
 void main() {
     vec4 current = texture2D(u_currentState, v_texCoord);
     vec4 conv = texture2D(u_convolution, v_texCoord);
-    vec3 src = texture2D(u_originalImage, v_texCoord).rgb;
+    vec4 guidance = texture2D(u_sourceGuidance, v_texCoord);
+    vec2 sourceDir = normalize(guidance.rg * 2.0 - 1.0);
+    float sourceCoherence = guidance.b;
+    float sourceRidge = guidance.a;
     
     // Decode current state: (L, a, b, M)
     float lNow = current.r;
@@ -346,7 +369,7 @@ void main() {
     float chromaMismatch = length(abMean - abNow);
 
     // SmoothLife-style neighborhood measurements: inner mass m and outer shell n
-    vec2 mn = sample_smoothlife_mn(v_texCoord);
+    vec2 mn = sample_smoothlife_mn(v_texCoord, sourceDir, sourceCoherence);
     float m = mn.x;
     float n = mn.y;
 
@@ -365,9 +388,16 @@ void main() {
     // Encourage true dark voids when both inner and outer densities are low.
     float voidness = (1.0 - smoothstep(0.08, 0.22, m)) * (1.0 - smoothstep(0.08, 0.22, n));
     float voidDarkening = (0.15 + 0.5 * u_kernelInhibitGain) * voidness;
+    float coherenceGate = smoothstep(u_sourceCoherenceFloor, 1.0, sourceCoherence);
+    float sourceGain = u_sourceGuidanceGain * coherenceGate;
+    float ridgeCentered = sourceRidge * 2.0 - 1.0;
+    float localGrowthGain = u_kernelGrowthGain * (1.0 + sourceGain * u_sourceRidgeBias * ridgeCentered);
+    float localInhibitGain = u_kernelInhibitGain * (1.0 - 0.5 * sourceGain * u_sourceRidgeBias * ridgeCentered);
+    localGrowthGain = max(0.0, localGrowthGain);
+    localInhibitGain = max(0.0, localInhibitGain);
     float kernelContribution = u_kernelBlend * (
-        smoothlifeSignal * u_kernelGrowthGain
-        - lateralInhibition * u_kernelInhibitGain
+        smoothlifeSignal * localGrowthGain
+        - lateralInhibition * localInhibitGain
         + colorToL
         - voidDarkening
     );
