@@ -513,3 +513,199 @@ button:active {
 .control-section > details > summary:hover {
     color: #00d4ff;
 }
+
+/* ========================================
+   CORE V1 PARAMETER GROUPS
+   ======================================== */
+
+.controls-header {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #333;
+}
+
+.controls-header h2 {
+    font-size: 1.5em;
+    margin-bottom: 10px;
+    color: #00d4ff;
+}
+
+.header-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.header-buttons button {
+    flex: 1;
+    padding: 8px 12px;
+    background: #252525;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #e0e0e0;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.header-buttons button:hover {
+    background: #303030;
+    border-color: #00d4ff;
+}
+
+.config-section {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #333;
+}
+
+.config-input {
+    width: 100%;
+    padding: 6px 10px;
+    background: #1e1e1e;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-size: 0.9em;
+    margin-bottom: 8px;
+}
+
+.config-section button,
+.btn-import-label {
+    padding: 6px 12px;
+    background: #252525;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #e0e0e0;
+    cursor: pointer;
+    font-size: 0.85em;
+    margin-right: 6px;
+    margin-bottom: 6px;
+    display: inline-block;
+}
+
+.config-section button:hover,
+.btn-import-label:hover {
+    background: #303030;
+    border-color: #00d4ff;
+}
+
+.saved-configs-list {
+    margin-top: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.config-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+
+.config-name {
+    flex: 1;
+    font-size: 0.85em;
+    color: #ccc;
+}
+
+.config-load-btn,
+.config-delete-btn {
+    padding: 4px 8px;
+    font-size: 0.75em;
+    background: #252525;
+    border: 1px solid #444;
+    border-radius: 3px;
+    color: #e0e0e0;
+    cursor: pointer;
+}
+
+.config-load-btn:hover {
+    background: #303030;
+    border-color: #00d4ff;
+}
+
+.config-delete-btn {
+    color: #ff4444;
+}
+
+.config-delete-btn:hover {
+    background: #400000;
+    border-color: #ff4444;
+}
+
+.param-group {
+    margin-bottom: 15px;
+    border: 1px solid #333;
+    border-radius: 6px;
+    background: #1e1e1e;
+}
+
+.param-group-header {
+    padding: 12px 15px;
+    background: #252525;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    font-weight: 600;
+    color: #00d4ff;
+    user-select: none;
+}
+
+.param-group-header:hover {
+    background: #2a2a2a;
+}
+
+.param-group.collapsed .param-group-content {
+    display: none;
+}
+
+.param-group.collapsed .param-group-header {
+    border-radius: 6px;
+}
+
+.param-group-content {
+    padding: 15px;
+}
+
+.slider-control {
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #2a2a2a;
+}
+
+.slider-control:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.slider-control label {
+    display: block;
+    font-size: 0.95em;
+    color: #ccc;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.slider-value {
+    float: right;
+    font-size: 0.9em;
+    color: #00d4ff;
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+}
+
+.slider-control input[type="range"] {
+    width: 100%;
+    margin-top: 8px;
+    margin-bottom: 6px;
+}
+
+.slider-hint {
+    font-size: 0.75em;
+    color: #888;
+    line-height: 1.4;
+    margin-top: 4px;
+}
+
