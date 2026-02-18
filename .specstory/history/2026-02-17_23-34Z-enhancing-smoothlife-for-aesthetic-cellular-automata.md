@@ -1703,3 +1703,150 @@ If you want, next I can also add an **overlay mode dropdown** (`edges`, `coheren
 
 ---
 
+_**User (2026-02-16 04:15Z)**_
+
+this should super dim the simulation and overlay the lines in white when checked - can't see this red on the image now.
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Editing shader overlay color and dim**</details></think>
+
+---
+
+Makes sense. I’ll change the overlay mode so enabling `Show Guidance Edges` heavily dims the simulation and draws the guidance lines in bright white for clear visibility. Applying that now.
+
+---
+
+_**User (2026-02-16 04:15Z)**_
+
+how is color -> l coupling working?  ideally, we'd have something where different patterns in the region are driving different colors.  but nothing as simple as a rule mapping.  something about the CA summary stats.  an amazing effect would be things like striped regions not turning blue per say, but, like, break up the colors into different things, like say more local or global things.  and then those diversities of colors somehow biasing the types of patterns that then form.  does this make sense?  this is tricky, because I don't want this to be something stupid like a lookup table behind the scenes.  i feel like there are really rich dynamics we can't just put in a table that could occur
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Explaining color-to-luminance coupling**</details></think>
+
+---
+
+Yes, this makes perfect sense — and you’re describing exactly the right kind of coupling: **continuous field dynamics**, not lookup-table mapping.
+
+### How `Color -> L` works right now
+
+Right now it’s still simple:
+
+- Compute chroma mismatch: `chromaMismatch = |abMean - abNow|`
+- Convert to a bounded scalar: `colorToL = gain * clamp(chromaMismatch - threshold, min, max)`
+- Add that into kernel `dL`
+
+So today it says: “if local color differs from neighborhood enough, push L dynamics a bit.”  
+That is useful, but it’s still a **single-channel scalar coupling** — not rich pattern-aware coupling.
+
+---
+
+### What you want (and what I agree we should do)
+
+You want color organization (striping, local pockets, long-wave drift, microtexture) to emerge as multiple continuous modes, and then feed back into structure formation.  
+That means replacing single mismatch with **CA summary stats at multiple scales**.
+
+---
+
+### Better non-table coupling design
+
+Use these continuous stats (computed from local kernels, no lookup table):
+
+- `C_local`: local chroma variance / gradient energy (fine texture)
+- `C_mid`: mid-scale chroma coherence (meso structures)
+- `C_global`: low-frequency chroma drift proxy (broad fields)
+- `H_entropy`: local hue-angle entropy (color diversity vs locked bands)
+- `C_aniso`: chroma orientation anisotropy (stripe-ness / directional order)
+
+Then couple into L by modulating rule coefficients, not colors directly:
+
+- `growthGain_local = base * f(C_local, H_entropy)`
+- `inhibitGain_local = base * g(C_aniso, C_global)`
+- `kernelWidth_local = base * h(C_mid)`
+
+So:
+- highly coherent color bands can trigger breakup/inhibition
+- high local color diversity can stabilize pockets
+- low-frequency color drift can bias larger-scale motion
+- all continuous, emergent, no discrete mapping
+
+---
+
+### Why this will feel richer
+
+Because “striped region turns blue” is a color mapping.  
+What you want is “striped region changes *dynamics class*.”  
+That happens when color stats modify **interaction geometry and gains**, not final display color.
+
+---
+
+### Concrete next step I’d implement
+
+Phase E coupling pass (small and principled):
+
+1. Add two-scale chroma summary in shader (`local` and `mid-ring`).
+2. Compute `stripeScore`, `diversityScore`, `coherenceScore`.
+3. Use them to modulate `localGrowthGain`, `localInhibitGain`, and chroma advection gain.
+4. Expose 3 intuitive sliders:
+   - `Color Structure -> Growth`
+   - `Stripe Breakup Bias`
+   - `Color Diversity Feedback`
+
+If you want, I’ll implement exactly that next (no LUTs, no hardcoded pattern classes).
+
+---
+
+_**User (2026-02-16 04:15Z)**_
+
+this all seemed great until you said stripe breakup and score.  that's a specific thing.  I want all of this implicit.  the field shouldn't know about and be codefying explicit stuff.  it should all be emergent.  does that make sense?  does this change what you were thinking?
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Acknowledging conceptual shift**</details></think>
+
+---
+
+Yes — that makes total sense, and yes, it changes the framing.
+
+“Stripe breakup score” was bad wording. If we do this right, the system should never have named motif detectors. It should only use **generic local field operators** and let motifs emerge.
+
+## Revised approach (implicit only)
+
+No explicit pattern labels. Only continuous, universal stats from local neighborhoods:
+
+- local mean / variance of `L` and `ab`
+- cross-covariance `cov(L, ab_mag)`
+- structure tensor eigenvalues (orientation/coherence, but not “stripe”)
+- multi-scale Laplacian/gradient energy
+- temporal derivatives (`dL`, `dab`) and their correlations
+
+Then couple by modulating dynamics through smooth functions:
+
+- `growth_gain = f(local moments)`
+- `inhibit_gain = g(covariances, coherence)`
+- `color_advection = h(temporal + spatial moments)`
+
+No `if stripe then ...`, no lookup table, no class IDs.
+
+## Why this still gives what you want
+
+Patterns like bands, pockets, filaments, blobs become **attractors of the coupled PDE-like system**, not predefined categories.  
+Color diversity influences structure because it changes local moments/covariances, which in turn shift the same shared rule coefficients.
+
+## Practical rule
+
+- Only implement operators that are **basis-invariant and generic**.
+- Ban motif-specific feature names in code (`stripe`, `blob`, etc.).
+- Keep all couplings smooth and local.
+
+So yes: your clarification is exactly right, and I’d implement the next pass with this constraint explicitly.
+
+---
+
