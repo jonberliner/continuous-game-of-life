@@ -18,10 +18,62 @@ function clamp01(x) {
     return Math.max(0, Math.min(1, x));
 }
 
+function smoothstep(edge0, edge1, x) {
+    const t = clamp01((x - edge0) / (edge1 - edge0));
+    return t * t * (3.0 - 2.0 * t);
+}
+
+function makeGaussianKernel1D(sigma) {
+    const s = Math.max(0.2, sigma);
+    const radius = Math.max(1, Math.ceil(s * 3.0));
+    const size = radius * 2 + 1;
+    const kernel = new Float32Array(size);
+    let sum = 0.0;
+    for (let i = -radius; i <= radius; i++) {
+        const w = Math.exp(-(i * i) / (2.0 * s * s));
+        kernel[i + radius] = w;
+        sum += w;
+    }
+    for (let i = 0; i < size; i++) kernel[i] /= sum;
+    return { kernel, radius };
+}
+
+function gaussianBlurSeparable(input, width, height, sigma) {
+    const { kernel, radius } = makeGaussianKernel1D(sigma);
+    const tmp = new Float32Array(width * height);
+    const out = new Float32Array(width * height);
+
+    // Horizontal pass
+    for (let y = 0; y < height; y++) {
+        const row = y * width;
+        for (let x = 0; x < width; x++) {
+            let acc = 0.0;
+            for (let k = -radius; k <= radius; k++) {
+                const sx = Math.min(width - 1, Math.max(0, x + k));
+                acc += input[row + sx] * kernel[k + radius];
+            }
+            tmp[row + x] = acc;
+        }
+    }
+
+    // Vertical pass
+    for (let y = 0; y < height; y++) {
+        const row = y * width;
+        for (let x = 0; x < width; x++) {
+            let acc = 0.0;
+            for (let k = -radius; k <= radius; k++) {
+                const sy = Math.min(height - 1, Math.max(0, y + k));
+                acc += tmp[sy * width + x] * kernel[k + radius];
+            }
+            out[row + x] = acc;
+        }
+    }
+    return out;
+}
+
 function computeSourceGuidanceTextureData(imgData, width, height, edgeFrequency = 0.55) {
     const size = width * height;
     const lum = new Float32Array(size);
-    const lumBlur = new Float32Array(size);
     const lumGuidance = new Float32Array(size);
     const gx = new Float32Array(size);
     const gy = new Float32Array(size);
@@ -37,26 +89,20 @@ function computeSourceGuidanceTextureData(imgData, width, height, edgeFrequency 
         lum[i] = 0.299 * r + 0.587 * g + 0.114 * b;
     }
 
-    const idx = (x, y) => y * width + x;
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
-                lumBlur[idx(x, y)] = lum[idx(x, y)];
-                continue;
-            }
-            let sum = 0.0;
-            for (let oy = -1; oy <= 1; oy++) {
-                for (let ox = -1; ox <= 1; ox++) {
-                    sum += lum[idx(x + ox, y + oy)];
-                }
-            }
-            lumBlur[idx(x, y)] = sum / 9.0;
-        }
-    }
     const ef = clamp01(edgeFrequency);
+    // XDoG-style contour abstraction: low ef => coarser, cleaner outlines; high ef => finer detail.
+    const sigmaFine = 0.40 + (1.0 - ef) * 1.10;
+    const sigmaCoarse = 1.4 + (1.0 - ef) * 3.2;
+    const blurFine = gaussianBlurSeparable(lum, width, height, sigmaFine);
+    const blurCoarse = gaussianBlurSeparable(lum, width, height, sigmaCoarse);
+
+    // Base field for orientation/coherence extraction.
+    const orientationMix = 0.35 + 0.45 * ef; // more fine detail when ef is high
     for (let i = 0; i < size; i++) {
-        lumGuidance[i] = lumBlur[i] * (1.0 - ef) + lum[i] * ef;
+        lumGuidance[i] = blurCoarse[i] * (1.0 - orientationMix) + blurFine[i] * orientationMix;
     }
+
+    const idx = (x, y) => y * width + x;
 
     for (let y = 1; y < height - 1; y++) {
         for (let x = 1; x < width - 1; x++) {
@@ -82,10 +128,138 @@ function computeSourceGuidanceTextureData(imgData, width, height, edgeFrequency 
         }
     }
 
+    const gradMag = new Float32Array(size);
     let maxGrad = 1.0e-6;
     for (let i = 0; i < size; i++) {
         const gmag = Math.hypot(gx[i], gy[i]);
+        gradMag[i] = gmag;
         if (gmag > maxGrad) maxGrad = gmag;
+    }
+
+    // Canny-style contour extraction: thin, binary cartoon-like lines.
+    const nms = new Float32Array(size);
+    let maxNms = 1.0e-6;
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+            const i = idx(x, y);
+            const g = gradMag[i];
+            if (g <= 0.0) continue;
+
+            let theta = Math.atan2(gy[i], gx[i]) * (180.0 / Math.PI);
+            if (theta < 0.0) theta += 180.0;
+
+            let g1 = 0.0;
+            let g2 = 0.0;
+            if (theta < 22.5 || theta >= 157.5) {
+                g1 = gradMag[idx(x - 1, y)];
+                g2 = gradMag[idx(x + 1, y)];
+            } else if (theta < 67.5) {
+                g1 = gradMag[idx(x - 1, y - 1)];
+                g2 = gradMag[idx(x + 1, y + 1)];
+            } else if (theta < 112.5) {
+                g1 = gradMag[idx(x, y - 1)];
+                g2 = gradMag[idx(x, y + 1)];
+            } else {
+                g1 = gradMag[idx(x - 1, y + 1)];
+                g2 = gradMag[idx(x + 1, y - 1)];
+            }
+
+            const v = (g >= g1 && g >= g2) ? g : 0.0;
+            nms[i] = v;
+            if (v > maxNms) maxNms = v;
+        }
+    }
+
+    // Edge frequency controls contour density/detail:
+    // low ef = coarser/sparser (higher threshold), high ef = finer/denser (lower threshold).
+    const highT = (0.58 - 0.36 * ef) * maxNms;
+    const lowT = highT * (0.42 + 0.12 * ef);
+    const ridgeMask = new Uint8Array(size);
+    const weakMask = new Uint8Array(size);
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+            const i = idx(x, y);
+            const v = nms[i];
+            if (v >= highT) ridgeMask[i] = 1;
+            else if (v >= lowT) weakMask[i] = 1;
+        }
+    }
+
+    // Hysteresis: keep weak edges connected to strong edges.
+    let changed = true;
+    let iter = 0;
+    while (changed && iter < 8) {
+        changed = false;
+        iter++;
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const i = idx(x, y);
+                if (weakMask[i] === 0 || ridgeMask[i] === 1) continue;
+                if (
+                    ridgeMask[idx(x - 1, y - 1)] || ridgeMask[idx(x, y - 1)] || ridgeMask[idx(x + 1, y - 1)] ||
+                    ridgeMask[idx(x - 1, y)]     || ridgeMask[idx(x + 1, y)] ||
+                    ridgeMask[idx(x - 1, y + 1)] || ridgeMask[idx(x, y + 1)] || ridgeMask[idx(x + 1, y + 1)]
+                ) {
+                    ridgeMask[i] = 1;
+                    changed = true;
+                }
+            }
+        }
+    }
+    // Coarse-end cleanup: prune sparse micro-contours when Edge Frequency is low.
+    const prunePasses = Math.max(0, Math.floor((1.0 - ef) * 3.0));
+    for (let pass = 0; pass < prunePasses; pass++) {
+        const keep = new Uint8Array(size);
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const i = idx(x, y);
+                if (!ridgeMask[i]) continue;
+                let neighbors = 0;
+                neighbors += ridgeMask[idx(x - 1, y - 1)] ? 1 : 0;
+                neighbors += ridgeMask[idx(x, y - 1)] ? 1 : 0;
+                neighbors += ridgeMask[idx(x + 1, y - 1)] ? 1 : 0;
+                neighbors += ridgeMask[idx(x - 1, y)] ? 1 : 0;
+                neighbors += ridgeMask[idx(x + 1, y)] ? 1 : 0;
+                neighbors += ridgeMask[idx(x - 1, y + 1)] ? 1 : 0;
+                neighbors += ridgeMask[idx(x, y + 1)] ? 1 : 0;
+                neighbors += ridgeMask[idx(x + 1, y + 1)] ? 1 : 0;
+                // Require local support; isolated spikes are dropped.
+                if (neighbors >= 2) keep[i] = 1;
+            }
+        }
+        for (let i = 0; i < size; i++) ridgeMask[i] = keep[i];
+    }
+    for (let i = 0; i < size; i++) ridge[i] = ridgeMask[i] ? 1.0 : 0.0;
+
+    // IMPORTANT: Guidance direction/coherence must be derived from the same contour map
+    // used for overlay, not from raw image texture gradients.
+    const ridgeGuidance = gaussianBlurSeparable(ridge, width, height, 0.8 + (1.0 - ef) * 1.2);
+    for (let i = 0; i < size; i++) {
+        gx[i] = 0.0;
+        gy[i] = 0.0;
+    }
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+            const i00 = idx(x - 1, y - 1);
+            const i01 = idx(x, y - 1);
+            const i02 = idx(x + 1, y - 1);
+            const i10 = idx(x - 1, y);
+            const i12 = idx(x + 1, y);
+            const i20 = idx(x - 1, y + 1);
+            const i21 = idx(x, y + 1);
+            const i22 = idx(x + 1, y + 1);
+
+            const sx =
+                -ridgeGuidance[i00] - 2.0 * ridgeGuidance[i10] - ridgeGuidance[i20] +
+                ridgeGuidance[i02] + 2.0 * ridgeGuidance[i12] + ridgeGuidance[i22];
+            const sy =
+                -ridgeGuidance[i00] - 2.0 * ridgeGuidance[i01] - ridgeGuidance[i02] +
+                ridgeGuidance[i20] + 2.0 * ridgeGuidance[i21] + ridgeGuidance[i22];
+
+            const i = idx(x, y);
+            gx[i] = sx;
+            gy[i] = sy;
+        }
     }
 
     for (let y = 1; y < height - 1; y++) {
@@ -109,15 +283,14 @@ function computeSourceGuidanceTextureData(imgData, width, height, edgeFrequency 
 
             const tr = jxx + jyy + 1.0e-8;
             const aniso = Math.sqrt((jxx - jyy) * (jxx - jyy) + 4.0 * jxy * jxy);
-            const c = clamp01(aniso / tr);
+            const i = idx(x, y);
+            const edgeSupport = smoothstep(0.05, 0.35, ridgeGuidance[i]);
+            const c = clamp01(aniso / tr) * edgeSupport;
 
             const theta = 0.5 * Math.atan2(2.0 * jxy, jxx - jyy);
-            const tx = Math.cos(theta + Math.PI * 0.5);
-            const ty = Math.sin(theta + Math.PI * 0.5);
-
-            const i = idx(x, y);
+            const tx = edgeSupport > 0.0 ? Math.cos(theta + Math.PI * 0.5) : 1.0;
+            const ty = edgeSupport > 0.0 ? Math.sin(theta + Math.PI * 0.5) : 0.0;
             coherence[i] = c;
-            ridge[i] = clamp01(Math.hypot(gx[i], gy[i]) / maxGrad);
 
             out[i * 4] = Math.floor(clamp01(tx * 0.5 + 0.5) * 255.0);
             out[i * 4 + 1] = Math.floor(clamp01(ty * 0.5 + 0.5) * 255.0);
@@ -330,6 +503,14 @@ export class CoreV1Engine {
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_coreLRate'), params.coreLRate ?? 1.0);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_coreLDiffGain'), params.coreLDiffGain ?? 0.5);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_coreMaxDeltaL'), params.coreMaxDeltaL ?? 0.08);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_refractoryGain'), params.refractoryGain ?? 0.35);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_refractoryThreshold'), params.refractoryThreshold ?? 0.12);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_refractoryWidth'), params.refractoryWidth ?? 0.10);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_excitabilityGain'), params.excitabilityGain ?? 0.20);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_refractoryColorDamp'), params.refractoryColorDamp ?? 0.35);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_satRegimeGain'), params.satRegimeGain ?? 0.10);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_satRegimeSpread'), params.satRegimeSpread ?? 0.08);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_lumaChromaCoexistGain'), params.lumaChromaCoexistGain ?? 0.20);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_memoryDecay'), params.memoryDecay ?? 0.05);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_historyOscillationGain'), params.historyOscillationGain ?? 0.8);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_divergenceGain'), params.divergenceGain ?? 0.6);
@@ -341,13 +522,13 @@ export class CoreV1Engine {
         
         // Chroma Dynamics
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_coreColorRate'), params.coreColorRate ?? 1.0);
-        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_coreAdoptGain'), params.coreAdoptGain ?? 1.0);
-        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_coreGrowthHueCoupling'), params.coreGrowthHueCoupling ?? 0.4);
-        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_coreMaxDeltaAB'), params.coreMaxDeltaAB ?? 0.08);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_coreAdoptGain'), params.coreAdoptGain ?? 0.85);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_coreGrowthHueCoupling'), params.coreGrowthHueCoupling ?? 0.25);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_coreMaxDeltaAB'), params.coreMaxDeltaAB ?? 0.10);
         
         // Diversity
-        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_diversityKick'), params.diversityKick ?? 0.5);
-        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_antiConsensusGain'), params.antiConsensusGain ?? 0.4);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_diversityKick'), params.diversityKick ?? 0.0);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_antiConsensusGain'), params.antiConsensusGain ?? 0.18);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_vorticityGain'), params.vorticityGain ?? 0.15);
         
         // State Angles
@@ -376,7 +557,7 @@ export class CoreV1Engine {
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_competitionGain'), params.competitionGain ?? 0.40);
 
         // Hybrid SmoothLife kernel (Phase A)
-        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelBlend'), params.kernelBlend ?? 0.0);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelBlend'), 1.0);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelGrowthGain'), params.kernelGrowthGain ?? 0.25);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelInhibitGain'), params.kernelInhibitGain ?? 0.20);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelInnerRatio'), params.kernelInnerRatio ?? 0.50);
@@ -385,10 +566,16 @@ export class CoreV1Engine {
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelBirthWidth'), params.kernelBirthWidth ?? 0.18);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelSurvivalCenter'), params.kernelSurvivalCenter ?? 0.46);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelSurvivalWidth'), params.kernelSurvivalWidth ?? 0.22);
-        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelColorToLGain'), params.kernelColorToLGain ?? 0.35);
-        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelLToColorGain'), params.kernelLToColorGain ?? 0.40);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelSecondaryGain'), params.kernelSecondaryGain ?? 0.0);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelSecondaryRadius'), params.kernelSecondaryRadius ?? 2.0);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelSecondaryInner'), params.kernelSecondaryInner ?? 0.60);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelColorToLGain'), params.kernelColorToLGain ?? 0.20);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_kernelLToColorGain'), params.kernelLToColorGain ?? 0.35);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_colorWaveDamping'), params.colorWaveDamping ?? 0.75);
-        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_colorPocketGain'), params.colorPocketGain ?? 0.35);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_colorPocketGain'), params.colorPocketGain ?? 0.30);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_fieldMomentCoupling'), params.fieldMomentCoupling ?? 0.18);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_crossMomentCoupling'), params.crossMomentCoupling ?? 0.14);
+        gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_scaleMomentCoupling'), params.scaleMomentCoupling ?? 0.12);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_sourceGuidanceGain'), params.sourceGuidanceGain ?? 0.55);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_sourceAnisotropy'), params.sourceAnisotropy ?? 1.20);
         gl.uniform1f(gl.getUniformLocation(this.transProgram, 'u_sourceCoherenceFloor'), params.sourceCoherenceFloor ?? 0.20);
@@ -431,6 +618,15 @@ export class CoreV1Engine {
         gl.uniform1i(gl.getUniformLocation(this.displayProgram, 'u_sourceGuidance'), 1);
         const showGuidanceEdges = this.lastParams && this.lastParams.showGuidanceEdges ? 1.0 : 0.0;
         gl.uniform1f(gl.getUniformLocation(this.displayProgram, 'u_showGuidanceEdges'), showGuidanceEdges);
+        gl.uniform2f(gl.getUniformLocation(this.displayProgram, 'u_texel'), 1.0 / this.width, 1.0 / this.height);
+        gl.uniform1f(
+            gl.getUniformLocation(this.displayProgram, 'u_structureIdentityMix'),
+            this.lastParams?.structureIdentityMix ?? 0.0
+        );
+        gl.uniform1f(
+            gl.getUniformLocation(this.displayProgram, 'u_structureIdentityColor'),
+            this.lastParams?.structureIdentityColor ?? 0.0
+        );
         
         bindQuadAttributes(gl, this.displayQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);

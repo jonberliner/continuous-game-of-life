@@ -181,6 +181,8 @@ export class ControlsManager {
                 </label>
                 <div id="saved-configs-list" class="saved-configs-list"></div>
             </div>
+            <div id="pipeline-status" class="slider-hint">Pipeline status unavailable</div>
+            <div id="kernel-diagnostics" class="slider-hint">Kernel diagnostics warming up...</div>
         `;
         container.appendChild(header);
         
@@ -369,6 +371,14 @@ export class ControlsManager {
     // Stub methods for compatibility with main.js
     setAutoTuneStatsText() {}
     setAutoTuneKnobScoresText() {}
+    setPipelineStatusText(text) {
+        const el = document.getElementById('pipeline-status');
+        if (el) el.textContent = text;
+    }
+    setKernelDiagnosticsText(text) {
+        const el = document.getElementById('kernel-diagnostics');
+        if (el) el.textContent = text;
+    }
     updatePipelineStatus() {}
     setMode() {}
     getMode() { return 'spatial'; }

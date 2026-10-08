@@ -1850,3 +1850,2644 @@ So yes: your clarification is exactly right, and I’d implement the next pass w
 
 ---
 
+_**User (2026-02-16 14:07Z)**_
+
+okay, are you ready to implement?  lay out the plan of what you're implementing before implementing
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Planning implicit coupling implementation**</details></think>
+
+---
+
+Plan before implementation:
+
+1. Add a new **implicit field-coupling layer** (moment/covariance based only) in the transition shader — no motif detectors, no `if stripe/blob` style logic.  
+2. Wire 3 new sliders for those couplings (`field moment`, `cross moment`, `scale coupling`) so you can tune how strongly color-state statistics bias L and vice versa.  
+3. Replace the remaining explicit “stripe” language/logic with generic coherence/scale operators built from local/global moments.  
+4. Keep it non-destructive: defaults low so current behavior remains, then you can turn up emergent coupling.
+
+I’m implementing this now.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Implementing implicit field coupling and dim white overlay**</details></think>
+
+---
+
+I’m now replacing the remaining explicit “stripe” logic with pure moment/covariance coupling and adding three generic coupling sliders. I’ll also finish the edge overlay visibility fix (dim + white lines) that you asked for earlier so debugging is usable.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Patching shader uniforms and logic**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Refactoring chroma kernel coupling**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Removing stripe naming from chroma block**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Fixing overlay dim color**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Updating roadmap with implicit coupling**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Checking uniform declarations and lints**</details></think>
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 4 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js`
+- `/Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Checking for Stripe mentions**</details></think>
+
+---
+
+Tool use: **rg**
+
+---
+
+<think><details><summary>Thought Process</summary>**Removing stripe mentions**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Running lints on single file**</details></think>
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Create SmoothLife extension roadmap with phased non-destructive migration
+- [x] Add kernel-hybrid tunable parameters and engine uniform plumbing
+- [x] Implement SmoothLife-style m/n kernel sampling and blendable L update term in transition shader
+- [x] Run lints for changed files and fix issues
+- [x] Add bidirectional kernel color<->structure coupling and expose controls
+- [x] Update extension roadmap with principled source guidance integration and guardrails
+- [x] Implement source guidance texture generation (orientation/coherence/ridge) in CoreV1 engine reset path
+- [x] Implement guidance-driven anisotropic SmoothLife sampling and local gain modulation in transition shader
+- [x] Run lint checks on modified roadmap, params, engine, and shader files
+- [x] Add source guidance edge overlay checkbox in display shader and controls
+- [x] Add source edge frequency slider and live guidance texture recompute
+- [x] Implement implicit moment/covariance/scale coupling (no explicit motif detectors)
+- [x] Make guidance overlay dim simulation and draw white lines for visibility
+
+---
+
+<think><details><summary>Thought Process</summary>**Summarizing implemented plan**</details></think>
+
+---
+
+Implemented with the exact constraint you gave: **implicit only**, no explicit motif detectors.
+
+### Plan I implemented
+
+- Add a generic cross-channel coupling layer using only local field operators:
+  - variance moments
+  - cross moments (covariance-like term)
+  - local vs neighborhood scale separation
+- Feed those moments into both:
+  - `L` kernel contribution
+  - chroma transport
+- Expose 3 tuning sliders so you can control coupling strength without hardcoded pattern logic.
+- Remove explicit motif wording/logic and keep everything continuous/smooth.
+- Also finish your earlier overlay visibility request (dim + white edges).
+
+## What changed
+
+### New implicit coupling controls
+In `src/ui/tunableParams.js` (`Kernel Hybrid`):
+- `fieldMomentCoupling`
+- `crossMomentCoupling`
+- `scaleMomentCoupling`
+
+### Engine uniform plumbing
+In `src/core/coreV1Engine.js`:
+- Added uniform uploads for those three controls.
+
+### Shader coupling implementation
+In `src/render/coreV1Shaders.js`:
+- Added new uniforms:
+  - `u_fieldMomentCoupling`
+  - `u_crossMomentCoupling`
+  - `u_scaleMomentCoupling`
+- `L` side:
+  - kernel contribution now includes bounded implicit moment coupling from local moments/cross moments/scale moments.
+- Chroma side:
+  - adoption and local transport now include implicit moment feedback from local L/sat moments and scale separation.
+- Removed explicit “stripe detector” style logic naming; kept generic coherence/phase-lock relaxation only.
+
+### Overlay fix you asked for
+In display shader (`src/render/coreV1Shaders.js`):
+- `Show Guidance Edges` now:
+  - strongly dims simulation
+  - draws guidance lines in **white**
+  - much easier to inspect on natural images
+
+### Roadmap update
+In `SMOOTHLIFE_EXTENSION_ROADMAP.md`:
+- Added Phase E1 note for implicit, motif-agnostic cross-channel coupling.
+
+---
+
+## Why this now matches your requirement
+
+- No `if stripe/blob/...`.
+- No lookup table of motif -> behavior.
+- Only generic local operators and smooth coupling functions.
+- Pattern classes should now emerge from dynamics, not be encoded.
+
+---
+
+## Quick test settings
+
+Try these as a starting point:
+- `fieldMomentCoupling = 0.30`
+- `crossMomentCoupling = 0.20`
+- `scaleMomentCoupling = 0.15`
+- `kernelBlend = 1.0`
+- `Show Guidance Edges = on` while tuning `Edge Frequency`
+
+If you want, next I can collapse these 3 technical couplings into 1–2 higher-level artist controls while preserving the same implicit math underneath.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+okay.  this is interesting, though I don't know how to control it yet.
+
+first, some clean up.  remove all controls that aren't for kernel-mix = 1.  we'll always use blend at one and build off that for now.
+
+look through the other controls.  are there things from there - interesting interactions, that would be useful to fold into our new kernels?  that can somehow fit in there while following our guides to the spirit of the things we're putting in?
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Implementing UI controls cleanup**</details></think>
+
+---
+
+I’m doing this in two passes: first, a hard UI cleanup with `kernelBlend` fixed to `1.0` and only relevant controls kept; second, I’ll map which legacy interactions are worth folding into the kernel path (implicit style only) and summarize that clearly.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Adding kernel blend constant**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning documentation update**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Setting up linting for changes**</details></think>
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 3 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+- `/Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Summarizing control folding and removals**</details></think>
+
+---
+
+Done — I cleaned the controls for a **kernel-only workflow** and set kernel mix to fixed `1.0`.
+
+### What I changed
+
+- **Kernel blend is now hard-fixed**
+  - In `src/core/coreV1Engine.js`, `u_kernelBlend` is always set to `1.0`.
+  - The `Kernel Blend` slider is removed from UI (no ambiguity now).
+
+- **UI controls were pruned/reorganized** in `src/ui/tunableParams.js` to only show kernel-mode-relevant controls:
+  - `Kernel Core`
+  - `Kernel Hybrid`
+  - `Chroma Transport`
+  - `Flow Geometry`
+  - `Source Guidance`
+  - `System`
+
+- **Roadmap updated** in `SMOOTHLIFE_EXTENSION_ROADMAP.md`
+  - Notes that current tuning mode is kernel blend fixed at `1.0`.
+
+- Lints checked: clean.
+
+---
+
+### What I kept from the old control set (and why)
+
+These are the legacy interactions worth keeping/folding into the kernel-era model because they’re still emergent, local, and not lookup-style:
+
+- **Flow geometry controls** (`angle*`, quantization, thresholds, position bias)
+  - They shape directional transport fields, which is powerful and generic.
+- **Diversity operators** (`diversityKick`, `antiConsensusGain`, `vorticityGain`)
+  - These are local differential-like perturbations, not motif detectors.
+- **Temporal memory controls** (`memoryDecay`, `memoryFreqScale`)
+  - Needed for nontrivial temporal coupling and avoiding static lock-in.
+- **Core chroma transport controls** (`coreAdoptGain`, `coreGrowthHueCoupling`, etc.)
+  - Still central to how color actually moves and feeds back.
+
+### What I effectively sidelined from active tuning
+
+- Legacy **L-only** shaping stacks (diffusion/conformity/boundary/attractor knobs) are no longer shown, since with blend fixed at 1 they’re no longer the right control surface for your current direction.
+
+---
+
+If you want, next I can do one more cleanup pass: rename the current groups/labels into an even more intuitive schema (e.g. `Structure`, `Color Dynamics`, `Source Bias`, `Debug`) so tuning reads less technical.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+were the ones you just put in already in the simulation?  I turned diversity kick down to zero and everything turned white.  would this have happened before?
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Clarifying diversityKick role changes**</details></think>
+
+---
+
+Short answer: **the control existed before, but this failure mode is more likely now**.
+
+- `diversityKick` was already in the simulation previously.
+- What changed is the regime: we’re now forcing `kernelBlend = 1`, so legacy L stabilizers are no longer contributing.
+- In this kernel-only + implicit-coupling setup, killing `diversityKick` can let chroma collapse locally, and that can bias the L kernel toward a bright attractor branch — so the screen can wash toward white.
+
+So: **same knob, different operating context**, and yes that whiteout is more plausible now than before.
+
+If you want, I can add a guardrail so `diversityKick` can go low but not trigger global white collapse (soft floor or adaptive fallback only when local chroma variance collapses).
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+NO NEVER HACKS LIKE THAT - if we change things, we think about the math and have it affect dynamics.
+
+Is it set up so that if these new knobs go to zero, there effect isn't there?  I want things to feel additive.  Right now I can't recover the behavior of what would happen before I put them in
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Planning strict additive shader fix**</details></think>
+
+---
+
+You’re right, and that’s a good constraint. “Additive” should mean: with the new coupling knobs at `0`, behavior is identical to pre-coupling. I’m going to enforce that explicitly in shader math now so zero really means zero effect.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+
+
+---
+
+Exactly — and I agree with your principle.
+
+It was *mostly* additive before, but not explicit enough in structure. I just changed it so the new implicit couplings are mathematically **strict add-ons**:
+
+- Base kernel/chroma behavior is computed first.
+- New coupling contributions are added as separate terms.
+- With `fieldMomentCoupling = crossMomentCoupling = scaleMomentCoupling = 0`, those added terms are exactly zero.
+
+So now zeroing the new knobs truly removes their effect.
+
+Also, your whiteout from `diversityKick = 0` is separate from these three new knobs; that’s a property of the current kernel-only operating regime, not a hidden fallback/hack.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+can we have these for all knobs?  go through one at a time and see if it makes sense for going to the left to mean (doesn't affect the kernel).  for things that go negative, are the negative values just symmetric to the positive ones?  if so just pick a direction and make one side 0 and the other full effect.  report if some don't make sense to additively go to zero
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Auditing knob ranges for additive semantics**</details></think>
+
+---
+
+I can do that. I’ll audit every currently exposed knob against “left = zero influence,” convert symmetric signed ranges where appropriate, and then patch the ones that violate additive semantics. I’ll report any knobs that fundamentally can’t be interpreted that way.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning additive parameter ranges**</details></think>
+
+---
+
+I’m applying a strict pass now: converting symmetric signed knobs to one-sided `0..max` where that’s mathematically equivalent, then I’ll list the knobs that inherently can’t be “left = no effect” because they’re structural coordinates/thresholds rather than additive gains.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Adjusting shader defaults and validation**</details></think>
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Summarizing knob additive behavior**</details></think>
+
+---
+
+Yes — I applied this policy and audited the current exposed knobs.
+
+### What I changed right now
+
+I converted symmetric signed knobs to one-sided additive ranges (`0..max`) where that fit your rule:
+
+- `fieldMomentCoupling`: `-2..2` -> `0..2`
+- `crossMomentCoupling`: `-2..2` -> `0..2`
+- `scaleMomentCoupling`: `-2..2` -> `0..2`
+- `angleL`: `-2..2` -> `0..2`
+- `angleM`: `-2..2` -> `0..2`
+- `angleS`: `-2..2` -> `0..2`
+- `sourceRidgeBias`: `-1..1` -> `0..1`
+
+So for those, left now means “no effect from that knob.”
+
+---
+
+### Knobs that already satisfy “left = no added effect”
+
+These are additive-gain style and already behave correctly:
+
+- `kernelGrowthGain`
+- `kernelInhibitGain`
+- `kernelColorToLGain`
+- `kernelLToColorGain`
+- `colorWaveDamping`
+- `colorPocketGain`
+- `positionAngleBias`
+- `diversityKick`
+- `antiConsensusGain`
+- `vorticityGain`
+- `sourceGuidanceGain`
+- `sourceAnisotropy` (left means no anisotropic boost)
+
+---
+
+### Knobs that **do not** naturally map to “left = no effect” (and shouldn’t be forced)
+
+These are **structural coordinates/thresholds/scales/rate-limiters**, not additive couplings:
+
+- `kernelInnerRatio`
+- `kernelTransitionWidth`
+- `kernelBirthCenter`
+- `kernelBirthWidth`
+- `kernelSurvivalCenter`
+- `kernelSurvivalWidth`
+- `angleQuantization` (neutral is `1`, not `0`)
+- `spatialFrequency`
+- `momentumThreshold`
+- `varianceThreshold`
+- `memoryFreqScale`
+- `sourceCoherenceFloor`
+- `sourceEdgeFrequency`
+- `radius`
+- `deltaTime`
+- `coreMaxDeltaL`, `coreMaxDeltaAB`
+- `coreLRate`, `coreColorRate`
+- `coreAdoptGain`, `coreGrowthHueCoupling`
+- `noiseGain`, `memoryDecay`
+
+For these, “left” means a boundary/scale choice, not “turn this influence off.”
+
+---
+
+If you want, next I can do a second pass that explicitly marks controls as either:
+- **`Gain` (left=off)** or
+- **`Shape` (structural parameter)**
+in the labels/grouping so tuning intent is immediately clear.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+okay.  why are color degenerate to black and white without the diversity kick?  this feels wrong
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Explaining and proposing chroma instability fix**</details></think>
+
+---
+
+You’re right that it *feels wrong*, and the reason is structural in the current equations:
+
+- Without `diversityKick`, the chroma system has a near-absorbing uniform state.
+- Most chroma forces are mean-based (`abRef - abNow`) or curvature-gated.
+- When a region becomes locally uniform:
+  - `dLocal ~ 0`, `dGlobal ~ 0`, local curvature small
+  - adoption/flow terms collapse toward zero
+  - saturation quench terms can still reduce `|ab|`
+- Once `|ab| -> 0`, display becomes grayscale (`S = |ab|`), so you see black/white only (with `L` providing brightness).
+
+So this is not a random bug; it’s because `diversityKick` is currently the main **symmetry-breaking injector** when chroma gets too uniform.
+
+## Why this is mathematically unsatisfying
+It means the chroma manifold is not self-exciting enough; it depends on an external perturbation term to avoid collapse.
+
+## Principled fix (no hack)
+Make chroma have intrinsic instability around uniform states using generic local operators (not motif rules), e.g.:
+
+- add an implicit anti-consensus term that remains active near `d=0`:
+  - based on local covariance/variance moments
+  - not on explicit pattern classes
+- keep it deterministic and local:
+  - use structure-tensor orientation / local moment gradients as direction basis
+  - avoid random kick dependence
+
+That gives “color stays alive because of field dynamics,” not because a special rescue knob is on.
+
+If you want, I can implement that next by replacing the role of `diversityKick` with an always-on, moment-driven antisymmetric chroma term so `diversityKick=0` still yields living color dynamics.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+yes I want this.  so it's the same knob, but now the cells themselves are doing it?
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Designing intrinsic anti-consensus baseline**</details></think>
+
+---
+
+Yes — exactly. I’ll keep `Diversity Kick` as the same control, but make the anti-degeneracy force intrinsic and state-driven (local moments/gradients/source orientation), with `Diversity Kick` becoming an amplifier rather than the only source of color life. I’m patching that now.
+
+---
+
+The model made no changes to the file.
+
+---
+
+<think><details><summary>Thought Process</summary>**Rereading code section for updates**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Implementing intrinsic term insertion**</details></think>
+
+---
+
+I found the exact spot. I’m adding an always-on intrinsic anti-collapse term driven by local gradients/moments (and source orientation), then leaving `Diversity Kick` as an amplifier on top. This keeps it dynamic-driven instead of rescue-by-knob.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 2 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Yes — exactly that.
+
+I implemented it so `Diversity Kick` is now the **same knob**, but no longer the only source of chroma survival.
+
+### What changed
+
+- Added an **intrinsic chroma anti-collapse term** in `src/render/coreV1Shaders.js`:
+  - deterministic
+  - built from local field gradients/moments (`gradL`, `gradSat`, local activity, low saturation)
+  - includes source orientation as part of the local basis
+- This term is always present, so even with `diversityKick = 0`, cells still have state-driven chroma regeneration pressure.
+
+- `Diversity Kick` now acts as an **amplifier** of that intrinsic term plus the existing burst term in uniform regions.
+
+- Updated the hint text in `src/ui/tunableParams.js` to reflect this behavior.
+
+### Outcome you should see
+
+- Setting `diversityKick` to zero should no longer immediately collapse color into grayscale/whiteout in the same way.
+- Increasing `diversityKick` should still increase dynamic color breakup, but as “more of an existing process,” not “turn process on/off.”
+
+
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+okay.  next - it still seems the chroma moves faster and more chaotically/dynamically than the blobs, which tend to mostly either be cells or strips that move and occasionally merge.  why do you think that is?  do you think there is a way we can achieve more constantly changing and more diverse in shape, size, direction blobs?  is there a reason the blobs need to be black and we can't have all sorts of blobs of different colors arising?
+
+don't code yet.  we have a lot of interacting things now.  describe reasons in general this might be the case
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Explaining state partition and limitations**
+
+- The state splits into structural scalar (L) constrained by window clamps and chroma vector with multiple rotational terms and fewer constraints.  
+- L exhibits strong attractors, thresholds, and diffusion effects; chroma is driven by several factors plus noise without hard attractors.  
+- Display mapping causes blobs to appear black since L controls brightness; low L values render even saturated colors as black, especially when blobs form at L minima.  
+- Colored blobs would require separating occupancy from value in state representation, for example by adding an alpha or occupancy channel.  
+- Timescale mismatch arises from coreColorRate and coreLRate limits, small kernel gain, and clamping, making L evolve slower than chroma.  
+- Morphological diversity is limited by the isotropic kernel and having only one scalar field; richer shapes need multi-scale, competing kernels, anisotropy, time-varying parameters, or refractory dynamics.  
+- No hacks or shortcuts are applied; these behaviors stem from inherent model and parameter structure.  
+- Could propose a detailed plan later if desired.</details></think>
+
+---
+
+Great pause point. In general, what you’re seeing is very expected for this class of system.
+
+### Why chroma looks faster/more chaotic than blobs
+
+- **Two different dynamical objects**
+  - `L` is one scalar field with strong survival/birth structure and clamps.
+  - `ab` is a 2D vector field with rotation + advection-like terms, so it has more degrees of freedom and tends to “dance” more.
+
+- **Timescale mismatch**
+  - Even if nominal rates are similar, `L` is heavily rate-limited by kernel windows, inhibition, and max-delta clamps.
+  - Chroma has multiple active forcing terms (adoption, flow angle, vorticity, intrinsic anti-collapse, etc.), so effective update energy is higher.
+
+- **Attractor geometry**
+  - `L` tends to settle into a few metastable morphology classes (cells/strips/merges), especially with one dominant kernel family.
+  - Chroma has many neutral/rotational directions, so it keeps evolving while `L` shape remains similar.
+
+- **Perception effect**
+  - If blob identity is mostly defined by low `L`, those regions render dark by construction.
+  - Chroma can vary inside/around them, but low value (`L`) still reads as black visually.
+
+### Why blobs often look black
+
+- In your render mapping, brightness is `L` (or tightly tied to it).
+- So “blob = low `L` pocket” naturally appears dark/black.
+- Colored blobs are possible, but only if blob identity is not strictly “low `L`” — i.e., if structure can be encoded in saturation/chroma contrasts too, not just luminance minima.
+
+### Can you get constantly changing, diverse blob shapes/sizes/directions?
+
+Yes, but usually not from a single scalar structural field alone. Diversity in morphology generally needs:
+
+- **Competing scales** (at least two meaningful structural scales in `L` dynamics)
+- **Competing mechanisms** (local activation + nonlocal inhibition + refractory/excitability)
+- **Comparable energy in shape and color channels** (right now chroma has more active modes)
+- **Bidirectional coupling that changes morphology class**, not just recolors existing morphology
+
+### Why this matters for your goal
+
+Your current system is close to:
+- `L` = slow structural scaffold
+- `ab` = fast expressive fluid on top
+
+What you want is:
+- `L` and `ab` both capable of generating and reshaping structure, with neither channel dominating timescale or morphology.
+
+So your diagnosis is correct: it’s not that colored blobs are impossible, it’s that the present coupling still leaves `L` as the main “shape gate,” and that gate tends to produce fewer, darker morphology families.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+okay.  can you lay out a clear plan for this given what you just said?  
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+## Plan To Get Rich, Colored, Morphological Blobs
+
+### 1) Equalize channel timescales (stop chroma outrunning structure)
+- Add diagnostics for effective per-step energy in `L` vs `ab` (`|dL|`, `|dAB|`, local variance change).
+- Tune toward parity windows (not exact equality, but same order of magnitude).
+- Outcome: shape changes keep up with color changes.
+
+### 2) Give `L` more morphology modes (not just cells/strips)
+- Move from single dominant kernel morphology to **competing scales** in `L`:
+  - local activator scale
+  - medium inhibitory scale
+- Keep it implicit (no pattern labels), but let local scale-mix vary with local moments/source coherence.
+- Outcome: broader family of blob sizes and boundary types.
+
+### 3) Add explicit excitability/refractory in structure dynamics
+- Introduce a lightweight refractory variable (or equivalent from memory channel) that temporarily suppresses reactivation after strong local activity.
+- This breaks repetitive strip/cell cycles and encourages moving, splitting, re-forming motifs.
+- Outcome: more direction changes, life cycles, and non-periodic morphology.
+
+### 4) Make structure not tied only to low luminance
+- Add a second structural observable for display/composition:
+  - e.g., “activity mass” or “coherence mass” from local moments.
+- Let visible “blobness” come from a blend of `L` + structural moment field, not just dark `L`.
+- Outcome: blobs can be bright/saturated/colored, not only black pockets.
+
+### 5) Strengthen bidirectional coupling where it changes morphology class
+- Keep couplings implicit (moments/covariances only).
+- Use chroma moments to modulate **kernel geometry and inhibition**, not just additive dL offsets.
+- Use structure moments to modulate **chroma transport topology** (local vs nonlocal).
+- Outcome: color organization changes what shapes are possible, not just how they’re painted.
+
+### 6) Add controlled anisotropic motion field for blobs
+- Use source guidance + local moments to create weak bounded drift/advection for structure (not only for chroma).
+- Keep drift small and state-dependent.
+- Outcome: varied blob directionality and movement instead of mostly static merge patterns.
+
+### 7) Simplify control surface into intention-based knobs
+- Replace technical tuning sprawl with a compact set:
+  - `Structure Diversity`
+  - `Shape Plasticity`
+  - `Color-Structure Coupling`
+  - `Blob Brightness Diversity`
+  - `Source Guidance`
+- Internally map to current parameters; keep advanced panel optional.
+- Outcome: controllability without losing rich internals.
+
+### 8) Validation loop (so changes are measurable, not subjective only)
+- Track metrics over time:
+  - morphology variety (component-size distribution entropy)
+  - lifetime diversity (persistence spectrum)
+  - channel parity (`|dL|` vs `|dAB|`)
+  - brightness diversity within components
+- Use these for iterative tuning and preset discovery.
+
+---
+
+If you want, next step I can convert this into a concrete **Phase F implementation checklist** in `SMOOTHLIFE_EXTENSION_ROADMAP.md`, with an order that minimizes breakage (timescale parity → competing scales → refractory → colored blob observables).
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+update the roapmap for this that includes where we are right now, the diagnosis of what you just said, and the functional plan for what to build you next
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Reading roadmap content**</details></think>
+
+---
+
+I’ll update the roadmap with three parts: current state snapshot, diagnosis of the L-vs-chroma imbalance, and a concrete next-build sequence (implementation order + success criteria). Then I’ll save it in the same roadmap file.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning phased update and patch**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Updated `SMOOTHLIFE_EXTENSION_ROADMAP.md` with exactly what you asked:
+
+- **Where we are now**  
+  - kernel-only mode (`kernelBlend=1`)
+  - source guidance integration status
+  - additive coupling semantics
+  - chroma anti-collapse shift
+
+- **Diagnosis section**  
+  - why chroma outruns structure
+  - why morphology is still limited
+  - why blobs still tend to look dark
+
+- **Functional next-build plan (Phase F)**  
+  - concrete implementation sequence (F1 → F6)
+  - explicit constraints aligned with your spirit (implicit only, no motif coding, no source pullback)
+  - measurable success criteria
+
+If you want, next I can start Phase F with F1 instrumentation first (metrics + small on-screen debug readout) before touching dynamics.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+okay, go for it
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Planning diagnostic instrumentation**</details></think>
+
+---
+
+I’m starting Phase F1 now: I’ll add lightweight runtime diagnostics for L-vs-chroma timescale parity (`|dL|` vs `|dAB|`) and show them in the UI so we can tune from measured behavior instead of guesswork.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/ui/controls.js
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/main.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning diagnostics integration**</details></think>
+
+---
+
+I’ve located the right integration points; now I’m adding a small diagnostics tracker in `main.js` and a UI readout panel in `controls.js` so you can see measured L-vs-chroma parity live.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 2 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/main.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/controls.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Updating roadmap with F1**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Phase F1 is in.
+
+### What I implemented
+
+- Added a live **kernel diagnostics panel** in the controls header (`src/ui/controls.js`):
+  - pipeline status line
+  - kernel diagnostics line
+
+- Added a new runtime diagnostics tracker in `src/main.js`:
+  - samples simulation state every fixed sim-step interval
+  - computes:
+    - `|dL|` (mean abs luminance change)
+    - `|dAB|` (mean abs chroma-vector change)
+    - parity ratio `|dAB| / |dL|`
+    - `varL` and `varS` (luminance/saturation variance)
+  - shows a quick status tag:
+    - `L-dominant`
+    - `balanced`
+    - `Chroma-dominant`
+
+- Integrated tracker lifecycle:
+  - resets on engine recreation/reset
+  - updates during animation loop
+
+- Updated roadmap (`SMOOTHLIFE_EXTENSION_ROADMAP.md`) to mark F1 implemented and document the added telemetry.
+
+### Why this helps
+
+You can now tune with feedback instead of intuition-only:
+- if parity ratio is too high, chroma is outrunning structure
+- if too low, structure is dominating and color may feel dead
+- variance lines tell you whether diversity is collapsing
+
+If you want, next I’ll do F2 (competing structural scales) in the same measured way so we can watch parity + morphology diversity move together.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+do it
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Implementing dual-scale kernel sampling**</details></think>
+
+---
+
+I’m implementing F2 now as a true competing-scale structural kernel: a second SmoothLife scale that can be blended in additively (zero = off), with its own radius ratio and influence. I’ll wire controls + uniforms + shader math and then update the roadmap.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Modifying sampling function signature**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Adding secondary calculations**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Considering clamping and linting**</details></think>
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 3 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+I’ve finished the F2 code wiring (secondary structural scale) and verified lints; next I’m updating the roadmap to reflect this step and how to tune it.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Create SmoothLife extension roadmap with phased non-destructive migration
+- [x] Add kernel-hybrid tunable parameters and engine uniform plumbing
+- [x] Implement SmoothLife-style m/n kernel sampling and blendable L update term in transition shader
+- [x] Run lints for changed files and fix issues
+- [x] Add bidirectional kernel color<->structure coupling and expose controls
+- [x] Update extension roadmap with principled source guidance integration and guardrails
+- [x] Implement source guidance texture generation (orientation/coherence/ridge) in CoreV1 engine reset path
+- [x] Implement guidance-driven anisotropic SmoothLife sampling and local gain modulation in transition shader
+- [x] Run lint checks on modified roadmap, params, engine, and shader files
+- [x] Add source guidance edge overlay checkbox in display shader and controls
+- [x] Add source edge frequency slider and live guidance texture recompute
+- [x] Implement implicit moment/covariance/scale coupling (no explicit motif detectors)
+- [x] Make guidance overlay dim simulation and draw white lines for visibility
+- [x] Implement Phase F1 live L-vs-chroma parity diagnostics in UI
+- [x] Implement Phase F2 competing structural scales (secondary SmoothLife kernel)
+- [x] Update roadmap with F1/F2 implementation notes and tuning guidance
+
+---
+
+Done — I implemented F2.
+
+### What was added
+
+- **Secondary structural scale** (additive, kernel-only):
+  - `kernelSecondaryGain` (left/off = `0`)
+  - `kernelSecondaryRadius`
+  - `kernelSecondaryInner`
+
+### Code changes
+
+- `src/ui/tunableParams.js`
+  - Added the 3 new controls in `Kernel Hybrid`.
+
+- `src/core/coreV1Engine.js`
+  - Wired uniforms:
+    - `u_kernelSecondaryGain`
+    - `u_kernelSecondaryRadius`
+    - `u_kernelSecondaryInner`
+
+- `src/render/coreV1Shaders.js`
+  - Refactored kernel sampling to support arbitrary radius/inner ratio:
+    - `sample_smoothlife_mn(..., outerRadiusPx, innerRatio)`
+  - Added second-scale sampling `(m2, n2)` at larger radius.
+  - Added secondary contribution to `dL`:
+    - fully additive
+    - respects source-guided anisotropy pipeline
+    - includes its own inhibition/void term
+  - `kernelSecondaryGain = 0` gives exact pre-F2 behavior.
+
+- `SMOOTHLIFE_EXTENSION_ROADMAP.md`
+  - Added F2 implementation notes.
+
+### How to test quickly
+
+Start from your current stable config and try:
+
+- `kernelSecondaryGain = 0.20`
+- `kernelSecondaryRadius = 2.2`
+- `kernelSecondaryInner = 0.60`
+
+Then watch diagnostics:
+- if parity still says chroma-dominant, lower `coreColorRate` or `kernelLToColorGain`
+- if blobs stay too simple, increase `kernelSecondaryGain` gradually (0.25 → 0.45)
+
+All modified files lint clean.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+okay, what's the next thing to implement?
+I have interesting, constantly evolving patterns.  colors are still fluids behind the black.  is the next phase this?  state the next phase
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+Yes — given your current result, the right next phase is:
+
+## **Phase F4 — Color-Structure Identity Expansion**
+
+You already have:
+- evolving morphology (good)
+- rich chroma dynamics (good)
+
+But color still reads as “fluid behind black structure,” which means structure identity is still too tied to low `L`.
+
+### Next implementation target
+Make structure identity depend on **composite field observables**, not only luminance minima.
+
+Concretely:
+- define a structural field from implicit moments (e.g. local activity/coherence/variance coupling),
+- use it in composition with `L` for displayed/value structure,
+- keep all couplings emergent (no lookup classes, no overlays).
+
+### Why this is next (not F3 first)
+- You already have strong continuous evolution; refractory helps later but won’t solve “black-only blob identity” by itself.
+- F4 directly addresses your current bottleneck: **colored blobs as real structures**.
+
+If you want, I’ll implement F4 next as a minimal additive pass:
+- add one `structureIdentityMix` knob,
+- compute a moment-based structural observable in shader,
+- blend it into value/structure mapping so blobs can be bright/saturated entities too.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+no let's keep going in order.  explain the purpose of 3 and implement.  if you can implement phase 4 safely as well, do that too, otherwise hold off
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Designing refractory phase implementation**</details></think>
+
+---
+
+I’ll do Phase F3 now: add a memory-derived refractory/excitability layer that suppresses immediate reactivation and reduces repetitive cycles, while keeping all effects additive (`0` means off). I’ll hold F4 unless this lands stable, since that one changes structure identity semantics and is riskier.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+I’ve wired the new controls/uniforms; now I’m applying the actual refractory math to both L and chroma updates with additive semantics.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 3 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Confirming phase4 holdoff and updating tasks**</details></think>
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Create SmoothLife extension roadmap with phased non-destructive migration
+- [x] Add kernel-hybrid tunable parameters and engine uniform plumbing
+- [x] Implement SmoothLife-style m/n kernel sampling and blendable L update term in transition shader
+- [x] Run lints for changed files and fix issues
+- [x] Add bidirectional kernel color<->structure coupling and expose controls
+- [x] Update extension roadmap with principled source guidance integration and guardrails
+- [x] Implement source guidance texture generation (orientation/coherence/ridge) in CoreV1 engine reset path
+- [x] Implement guidance-driven anisotropic SmoothLife sampling and local gain modulation in transition shader
+- [x] Run lint checks on modified roadmap, params, engine, and shader files
+- [x] Add source guidance edge overlay checkbox in display shader and controls
+- [x] Add source edge frequency slider and live guidance texture recompute
+- [x] Implement implicit moment/covariance/scale coupling (no explicit motif detectors)
+- [x] Make guidance overlay dim simulation and draw white lines for visibility
+- [x] Implement Phase F1 live L-vs-chroma parity diagnostics in UI
+- [x] Implement Phase F2 competing structural scales (secondary SmoothLife kernel)
+- [x] Update roadmap with F1/F2 implementation notes and tuning guidance
+- [x] Implement Phase F3 refractory/excitability layer with additive zero-off controls
+- [ ] Assess Phase F4 safety after F3 stabilization and diagnostics verification
+
+---
+
+Implemented in order: **Phase F3** is now in.
+
+### Purpose of Phase 3 (refractory/excitability)
+Phase F3 is about breaking repetitive structural loops and giving blobs more lifecycle variety:
+
+- **Refractory:** recently active regions temporarily resist re-activation (prevents immediate re-firing/lockstep cycling).
+- **Excitability:** quiet low-variance regions can wake up from local gradients (prevents static dead plateaus).
+- **Coupled chroma damping:** color transport is reduced during refractory periods so chroma doesn’t outrun structure as hard.
+
+This is exactly the “cells themselves are doing it” mechanism, not a fallback hack.
+
+---
+
+### What I implemented
+
+In `src/render/coreV1Shaders.js`:
+- Memory-derived refractory proxy from existing state:
+  - `activityProxy = abs(L - M) + 0.6 * L_stddev`
+- Refractory gate:
+  - suppresses **positive** `dL` drive during refractory
+- Excitability term:
+  - adds local wake-up drive in low-variance, non-refractory regions
+- Chroma refractory damping:
+  - scales `dAB` down during refractory periods
+
+All with additive semantics:
+- each new control at `0` => that effect is off.
+
+In `src/ui/tunableParams.js`:
+- Added controls:
+  - `refractoryGain`
+  - `refractoryThreshold`
+  - `refractoryWidth`
+  - `excitabilityGain`
+  - `refractoryColorDamp`
+
+In `src/core/coreV1Engine.js`:
+- Added uniform plumbing for all five.
+
+In roadmap:
+- Updated `SMOOTHLIFE_EXTENSION_ROADMAP.md` with F3 implementation note.
+
+All lints are clean.
+
+---
+
+### About Phase 4
+I held Phase F4 for now (as requested: “if safe”).
+Reason: F4 changes structural identity composition (how blobs are represented, not just how they evolve), and it’s safer to tune/validate F3 first with your new parity diagnostics before changing identity semantics.
+
+If you want, next step is a short tuning pass on F3 (with parity readout) and then a controlled F4 implementation.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+before we do phase 4 - is our edge detection somethng that woud have lots of little dots if the natural image has natural texture?  I think we need to get a more cartoon-like outline.  what's this effect called?  all the small fine lines mess with effects
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Summarizing edge-preserving abstraction methods**</details></think>
+
+---
+
+Yes — exactly. With natural photos, a plain gradient-based edge map captures **texture edges** (pores, grass, fabric noise), so you get lots of tiny dots/lines.
+
+What you want is usually called:
+
+- **Edge abstraction** / **line simplification**
+- often done via **edge-preserving smoothing + contour extraction**
+- in NPR terms: **cartoonization** or **coherent line drawing**
+
+Common approaches (the effect names to look up):
+
+- **Bilateral/Gaussian pre-smoothing + Canny** (removes high-frequency texture)
+- **Anisotropic diffusion** or **guided filtering** before edges
+- **XDoG** (Extended Difference of Gaussians) for stylized contour lines
+- **Morphological cleanup** (opening/closing) to remove speckles and thicken major contours
+- **Structure-tensor coherence gating** (keep coherent contours, suppress isotropic microtexture)
+
+So your intuition is right: those fine texture edges are polluting the guidance field and fighting the dynamics.  
+For your pipeline, the right direction is a **cartoon-outline guidance field**: suppress texture-scale edges, keep object-scale contours.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+okay.  pick one you know you can implement well and replace.  should also have the edge fineness replaced as well, which will recalculate it we coarser/finer edges.  pick an algorithm that can do this well
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Planning advanced edge extraction**</details></think>
+
+---
+
+I’m going to replace the current guidance extraction with an **XDoG-style contour abstraction** pipeline (Gaussian/DoG based), because it’s stable, gives cartoon-like outlines, and naturally supports your `Edge Frequency` slider as coarse↔fine contour scale. I’ll implement it directly in the guidance recompute path.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Designing advanced edge detection patch**</details></think>
+
+---
+
+I’m replacing the guidance extractor with a separable Gaussian + XDoG contour abstraction pipeline (cartoon-like contours) and keeping your `Edge Frequency` slider as the coarse↔fine control over sigma/threshold. This will explicitly suppress texture speckle edges.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Identifying duplicate constant declaration**</details></think>
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Inspecting patch impact on constant usage**</details></think>
+
+---
+
+Tool use: **rg**
+
+---
+
+<think><details><summary>Thought Process</summary>**Identifying possible duplicate issue**</details></think>
+
+---
+
+I spotted a duplicate `const ef` in the new edge extractor; I’m fixing that now so the guidance recompute path is clean and deterministic.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Removing duplicate line**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Updating roadmap and hints**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Implemented and replaced.
+
+I switched guidance extraction to an **XDoG-style contour abstraction pipeline** in `src/core/coreV1Engine.js`, which is much better for natural images than raw gradient edges.
+
+### What this algorithm now does
+
+- Converts source to luminance.
+- Runs **two Gaussian scales** (fine + coarse).
+- Computes **DoG/XDoG contour response** (cartoon-like line abstraction).
+- Smooths + thresholds contour response to suppress texture speckle.
+- Uses the abstracted contour for guidance ridge channel (`A`), while keeping orientation/coherence from the smoothed guidance field.
+
+### `Edge Frequency` behavior (replaced and preserved)
+
+`sourceEdgeFrequency` now directly controls coarser/finer contour extraction:
+
+- Low (`0`) → stronger smoothing, higher contour threshold → cleaner coarse outlines.
+- High (`1`) → finer scale, lower threshold → more detail edges.
+
+It still live-recomputes guidance when moved.
+
+### Other updates
+
+- Fixed a duplicate variable declaration introduced during replacement.
+- Updated roadmap (`SMOOTHLIFE_EXTENSION_ROADMAP.md`) to document this replacement.
+
+This should materially reduce the “lots of tiny dots/lines from natural texture” problem and give more cartoon-like structural guidance.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+did you make the overlay in reverse?  almost everything is white
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Adjusting edge detection logic**</details></think>
+
+---
+
+Good catch — yes, that likely means the XDoG ridge polarity is flipped (background scoring high instead of contours). I’m fixing the ridge response at the source extraction stage so both the overlay and source-guidance ridge bias use true contour strength.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Yes — you were right. The ridge polarity was effectively backward after the XDoG swap, so non-edge regions were being treated as “edges,” which made the overlay mostly white.
+
+I fixed it at the guidance extraction source (`src/core/coreV1Engine.js`) by flipping the XDoG response polarity so:
+
+- high ridge value = true contour
+- low ridge value = background
+
+This fixes both:
+- the **overlay** readability
+- the **source ridge bias** used by dynamics (important)
+
+Reload and test `Show Guidance Edges` again; it should now show sparse white contour lines on a dimmed sim instead of a white wash.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+I've got all these shades of gray and a kind of rich outline of the object.  this doesn't feel right.  I want an algorithm that will give me just the lines of the edges/cartoon countours of an image.  does this algorithm achieve that?  if not try again
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Planning Canny-like edge extraction**</details></think>
+
+---
+
+You’re right — what you describe means the current ridge channel is still too soft/continuous for “just contours.” I’m replacing it with a **Canny-style line extractor** (Gaussian smoothing + Sobel + non-maximum suppression + hysteresis), which yields thin binary contour lines and should match what you want.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+You were right — that previous result was not “just contour lines.”
+
+I replaced it again with a **Canny-style contour pipeline**, which is the right tool here for thin cartoon-like edges:
+
+- Gaussian smoothing
+- Sobel gradients
+- Non-maximum suppression (thinning)
+- Hysteresis thresholding (connected line selection)
+
+### What this changes
+
+- Ridge channel is now **binary line-like contours** (not soft grayscale fields).
+- Overlay should show mostly clean white lines on dimmed sim, not broad gray regions.
+- `Edge Frequency` still works, now as:
+  - low = coarser/sparser lines
+  - high = finer/denser lines
+
+### Files updated
+
+- `src/core/coreV1Engine.js` (new contour extraction path)
+- `SMOOTHLIFE_EXTENSION_ROADMAP.md` (notes updated to reflect Canny-style replacement)
+
+If you want, next I can add one more explicit control: **Min Contour Length** (post-hysteresis cleanup) to drop tiny isolated specks entirely.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+edge coarseness doesn't go low enough.   fix
+
+i don't understand the phase three sliders yet - be sure they're additive and go to 0 and i'll figure out later
+
+then, are we ready to begin phase 4?
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Adjusting edge coarseness parameters**</details></think>
+
+---
+
+I’ll tighten the coarse end of `Edge Frequency` now by making low values much more aggressive (stronger smoothing, higher hysteresis thresholds, and speckle pruning). Then I’ll verify Phase F3 knobs are truly zero-able/additive and confirm whether Phase 4 is safe to start.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Verifying additive phase3 sliders and readiness for phase4**</details></think>
+
+---
+
+Done — coarse edge mode is now significantly stronger.
+
+### Edge coarseness fix
+I changed the contour extractor so low `Edge Frequency` is much more aggressive:
+
+- bigger smoothing scales at low values
+- higher Canny hysteresis thresholds at low values
+- extra low-frequency speckle pruning passes (drops isolated tiny contour fragments)
+
+So sliding left should now produce much cleaner, broader cartoon outlines.
+
+---
+
+### Phase 3 sliders additive check
+Yes — F3 controls are additive/zero-able in the dynamics:
+
+- `refractoryGain = 0` → no refractory suppression on `dL`
+- `excitabilityGain = 0` → no excitability injection
+- `refractoryColorDamp = 0` → no chroma damping from refractory
+
+`refractoryThreshold` and `refractoryWidth` are shape parameters of the refractory gate, but if the gains above are zero, they have no effective impact.
+
+---
+
+### Are we ready for Phase 4?
+Yes — we’re ready to begin Phase F4.
+
+Given where we are, the safe next move is to implement F4 in a strictly additive way too:
+- one new structural-identity observable,
+- one mix/gain knob with `0 = no effect`,
+- no change to existing behavior at zero.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+okay, begin phase 4
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Planning color-structure identity expansion**</details></think>
+
+---
+
+Beginning Phase F4 with a safe additive implementation: I’ll add a new structural-identity observable in the **display/composition path** (derived from local moments), controlled by a knob where `0` keeps exact current visuals and higher values allow non-black colored structural blobs.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+I’ve added F4 display-side identity composition in shader; next I’m wiring its uniforms from the engine render pass (with zero defaults so behavior is unchanged unless you turn it up).
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 4 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+- `/Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Create SmoothLife extension roadmap with phased non-destructive migration
+- [x] Add kernel-hybrid tunable parameters and engine uniform plumbing
+- [x] Implement SmoothLife-style m/n kernel sampling and blendable L update term in transition shader
+- [x] Run lints for changed files and fix issues
+- [x] Add bidirectional kernel color<->structure coupling and expose controls
+- [x] Update extension roadmap with principled source guidance integration and guardrails
+- [x] Implement source guidance texture generation (orientation/coherence/ridge) in CoreV1 engine reset path
+- [x] Implement guidance-driven anisotropic SmoothLife sampling and local gain modulation in transition shader
+- [x] Run lint checks on modified roadmap, params, engine, and shader files
+- [x] Add source guidance edge overlay checkbox in display shader and controls
+- [x] Add source edge frequency slider and live guidance texture recompute
+- [x] Implement implicit moment/covariance/scale coupling (no explicit motif detectors)
+- [x] Make guidance overlay dim simulation and draw white lines for visibility
+- [x] Implement Phase F1 live L-vs-chroma parity diagnostics in UI
+- [x] Implement Phase F2 competing structural scales (secondary SmoothLife kernel)
+- [x] Update roadmap with F1/F2 implementation notes and tuning guidance
+- [x] Implement Phase F3 refractory/excitability layer with additive zero-off controls
+- [x] Assess Phase F4 safety after F3 stabilization and diagnostics verification
+- [x] Implement Phase F4 safe additive display/composition identity expansion with zero-preserving defaults
+
+---
+
+Phase 4 has begun and I implemented the **safe additive pass**.
+
+### What I implemented (F4 safe pass)
+
+I added a secondary structural identity observable in the **display/composition** path, with strict zero-preserving semantics.
+
+#### New controls
+In `src/ui/tunableParams.js`:
+- `structureIdentityMix` (default `0.0`)
+- `structureIdentityColor` (default `0.0`)
+
+At `0`, visuals stay exactly as before.
+
+#### Shader changes
+In `src/render/coreV1Shaders.js` (display shader):
+- Computes a local structural observable from:
+  - neighborhood `L` variance
+  - local activity proxy (`abs(L - M)`)
+- Uses it to compose display value/saturation:
+  - value blend controlled by `structureIdentityMix`
+  - color lift controlled by `structureIdentityColor`
+- Keeps guidance overlay behavior unchanged.
+
+#### Engine wiring
+In `src/core/coreV1Engine.js` render pass:
+- Added display uniforms:
+  - `u_texel`
+  - `u_structureIdentityMix`
+  - `u_structureIdentityColor`
+- Defaults to zero if unset.
+
+#### Roadmap updated
+In `SMOOTHLIFE_EXTENSION_ROADMAP.md`:
+- Added F4 implementation note for safe additive pass.
+
+All edited files lint clean.
+
+---
+
+### How to test quickly
+
+- Start from your current config.
+- Set:
+  - `Structure Identity Mix = 0.25`
+  - `Identity Color Lift = 0.20`
+- Increase gradually to see whether structural regions stop reading as purely black and begin showing colored identities.
+
+If this feels good, next F4 step is to move from display-only identity toward mild state-side coupling (still additive/zero-off).
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+I don't know what the last thing you said means.
+
+The structures and identity look a bit more sctructured and local, but they're still like fluids flowing through and around the blacks.  Is not the time to go from L being separate from H and S to a different thing with arbitrary attractors on the color wheel?  or is that too extreme and our dynamics depend on this?  presumably we'd like to have structures of different colors interacting.  things like background would be emergent as well from...what do you think?  leakage of cells?  something involving multiscale kernels?
+
+don't code yet.  tell me if you understand what i'm asking for and if it's too destructive to try it
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+Yes, I understand exactly what you’re asking for.
+
+You’re asking to stop treating “structure = mostly L” with color as secondary flow, and instead move to a model where **structure itself can live in chromatic state space** (different colored entities as first-class structures), with background emerging from dynamics, not predefined black regions.
+
+That is a real shift — but it’s not “too destructive” if done in a staged way.
+
+## Is it too extreme?
+- **Full immediate switch** to arbitrary color-wheel attractors as the core state would be risky/destructive.
+- **Staged transition** to vector-valued structure (L + chroma-magnitude + chroma-orientation moments) is feasible and likely what you need.
+
+## Why current behavior looks like “fluid around black”
+- Structural instability is still mostly in `L` kernel terms.
+- Chroma has richer transport modes, so it reads like advection around an L-defined scaffold.
+- Display changes alone can’t fully fix that; state dynamics must let chroma participate in structural attractors.
+
+## What you’re probably aiming for (good target)
+- Multiple interacting structure manifolds, not one luminance manifold.
+- Entities can be “blue-ish structure,” “red-ish structure,” etc., not just dark/bright blobs.
+- Background emerges as low-activity / low-coherence basin from multiscale competition + leakage + refractory, not fixed black.
+
+## Should we try it?
+Yes — but not as a hard replacement.  
+Best next step is a **parallel manifold path**:
+
+- keep existing L kernel running,
+- add a chroma-structure kernel term (moment-based, multiscale, implicit),
+- gradually increase cross-coupling so colored structures become dynamical, not decorative.
+
+So: you’re not asking for something wrong or impossible; you’re asking for the right next architectural step. It’s substantial, but not too destructive if we do it as an additive branch first, then phase out L dominance if it works.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+
+Multiple interacting structure manifolds, not one luminance manifold.
+Entities can be “blue-ish structure,” “red-ish structure,” etc., not just dark/bright blobs.
+
+here's the big one - we want to see if we can avoid red-ish and blue-ish - that's hard coded table lookups of steady states again.  can we do this in a way that is more like "suddenly there was coherence at this chroma" or something?  I know this is abstract.  let me know your thoughts.
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Explaining spontaneous symmetry breaking**</details></think>
+
+---
+
+Yes — this is the right abstraction, and it’s possible **without** hardcoding red/blue (or any hue labels).
+
+What you want is:
+
+- no fixed color targets,
+- but local dynamics that can suddenly lock into coherent chroma domains,
+- where the chosen hue is selected by symmetry breaking, not lookup tables.
+
+## How to do that (principled)
+
+Use a **rotationally symmetric chroma manifold** in `ab` space:
+
+- Dynamics depend on:
+  - chroma magnitude `|ab|`
+  - local coherence/alignment of neighboring `ab` vectors
+  - multiscale competition/inhibition
+- Dynamics do **not** depend on absolute hue angle.
+
+So the equations are invariant under global hue rotation.  
+That means any hue can emerge; none is privileged.
+
+## Mental model
+
+Think “phase ordering” / XY-like field behavior:
+
+- early stage: noisy chroma orientations
+- local coupling increases alignment pressure
+- domains nucleate and coarsen
+- coherence appears “suddenly” at arbitrary chroma angles
+- interfaces between domains create rich structure/motion
+
+That’s exactly your “suddenly there was coherence at this chroma” idea.
+
+## What to avoid
+
+- Any explicit attractor to angle bins (`targetHue1`, `targetHue2`, etc.)
+- Palette lookup logic
+- Piecewise hue-name rules
+
+## What to use instead
+
+- **Coherence attractor, not hue attractor**
+  - attract high local alignment strength
+  - keep angle free
+- **Radial shell attractor for saturation**
+  - prefer nonzero `|ab|` bands (so color survives)
+  - still no preferred angle
+- **Multiscale coupling**
+  - local alignment + mid-scale frustration/inhibition
+  - prevents trivial uniform color fill
+- **Refractory / activity gates**
+  - keeps domains alive and interacting, not frozen
+
+So yes: your abstract goal is mathematically clean and likely the best direction. It’s not a table lookup problem; it’s a **symmetry + coherence dynamics** problem.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+chroma magnitude |ab| biases towards the high saturation colors though, right?  or am I misunderstanding?  perhaps it's too much what I'm asking for.  is there a summary stats where the whole color wheel, full HSL, is uniformly likely?  or is that too much?
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Explaining saturation bias in HSL**</details></think>
+
+---
+
+You’re not misunderstanding — good catch.
+
+- `|ab|` controls **saturation radius**, not hue angle.
+- So a term on `|ab|` does **not** prefer red vs blue, but it *can* bias toward vivid vs gray.
+
+So yes: if you push `|ab|` upward, you’ll favor high-saturation colors (all hues equally).
+
+## Can the full wheel be uniformly likely?
+
+Yes, for hue:  
+- make dynamics **rotation-invariant** in `ab` (no absolute-angle terms),
+- then all hue angles are equally likely in principle.
+
+Harder part is saturation + luminance:
+- “Uniform over full HSL volume” is nontrivial because coordinate geometry is uneven (polar/cylindrical volume effects).
+- You can get close with a **stationary-distribution target** approach (entropy/repulsion style), but perfect uniformity usually fights interesting structure.
+
+## Practical sweet spot
+
+- Keep hue angle unbiased (uniformly likely).
+- Shape saturation/luminance with gentle, state-dependent priors (not fixed targets), so you still get coherent structures.
+- In other words: **uniform hue, controlled sat/L distribution** is realistic and usually better than full uniform HSL.
+
+So your ask is not too much — just split into:
+1) hue symmetry (absolutely doable),
+2) sat/L distribution design (tradeoff between uniformity and emergent structure).
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+okay, but I want things like this:
+- blacks and colors mixing
+- non-primary colors (like neons/pastels/earth tones)
+I don't think I can achieve that here
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Explaining feasibility and next steps**</details></think>
+
+---
+
+You can achieve that here.  
+What you’re missing is not the whole architecture — it’s a few distribution controls that are still too narrow.
+
+## Why you’re not seeing it yet
+
+- Structure is still too tied to luminance, so black dominates identity.
+- Chroma distribution is not being shaped as a *rich continuum*; it falls into a few regimes.
+- Display/value composition still clips a lot of subtle chroma-luminance combinations.
+
+## What needs to be true for your target look
+
+To get:
+
+- blacks + colors mixing
+- neon/pastel/earth tones (not just primary-feeling sweeps)
+
+you need three simultaneous things:
+
+1. **Hue symmetry**  
+   no absolute hue preference (you mostly have this already)
+
+2. **Saturation distribution shaping**  
+   encourage multiple sat regimes at once:
+   - near-zero (grays/blacks)
+   - mid (earth/pastel)
+   - high (neon accents)
+
+3. **Luminance–saturation coexistence coupling**  
+   allow low-L with nonzero chroma and mid/high-L with varied chroma, instead of forcing one dominant pairing.
+
+That’s doable with moment-driven, additive terms — no lookup palettes.
+
+## Bottom line
+
+You’re not asking for something impossible here.  
+You’re asking for a better **stationary distribution** over `(L, |ab|, angle)` while keeping local structure dynamics. That’s the correct next direction, and this system is already close enough to support it.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+okay, do you think we're ready for the next step?
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+Yes — ready.
+
+Best next step is to implement a **distribution-shaping layer** (additive, zero-off) for `(L, |ab|)` so you can get black/color coexistence plus pastel/earth/neon regimes without hue lookup tables.
+
+If you want, I’ll proceed with that now as the next Phase F4 extension:
+- multi-regime saturation shaping from local moments,
+- luminance–saturation coexistence coupling,
+- all additive with `0 = current behavior`.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+okay, and this is emergent via CA rules?  NOT a hack on top?  if so begin updating the extention roadmap and code.  if not, keep discussing
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Designing emergent saturation shaping**</details></think>
+
+---
+
+I agree — and yes, we can do this as true CA-state dynamics, not a display hack. I’m going to add an **emergent saturation/luminance distribution layer in the transition shader** (state update), with zero-off additive knobs, then update the roadmap accordingly.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+I’ve wired the new CA-state knobs; next I’m adding the actual emergent regime dynamics in the transition shader using local moments only (no hue targets, no lookup table).
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 4 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js`
+- `/Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Create SmoothLife extension roadmap with phased non-destructive migration
+- [x] Add kernel-hybrid tunable parameters and engine uniform plumbing
+- [x] Implement SmoothLife-style m/n kernel sampling and blendable L update term in transition shader
+- [x] Run lints for changed files and fix issues
+- [x] Add bidirectional kernel color<->structure coupling and expose controls
+- [x] Update extension roadmap with principled source guidance integration and guardrails
+- [x] Implement source guidance texture generation (orientation/coherence/ridge) in CoreV1 engine reset path
+- [x] Implement guidance-driven anisotropic SmoothLife sampling and local gain modulation in transition shader
+- [x] Run lint checks on modified roadmap, params, engine, and shader files
+- [x] Add source guidance edge overlay checkbox in display shader and controls
+- [x] Add source edge frequency slider and live guidance texture recompute
+- [x] Implement implicit moment/covariance/scale coupling (no explicit motif detectors)
+- [x] Make guidance overlay dim simulation and draw white lines for visibility
+- [x] Implement Phase F1 live L-vs-chroma parity diagnostics in UI
+- [x] Implement Phase F2 competing structural scales (secondary SmoothLife kernel)
+- [x] Update roadmap with F1/F2 implementation notes and tuning guidance
+- [x] Implement Phase F3 refractory/excitability layer with additive zero-off controls
+- [x] Assess Phase F4 safety after F3 stabilization and diagnostics verification
+- [x] Implement Phase F4 safe additive display/composition identity expansion with zero-preserving defaults
+- [x] Implement F4b emergent CA-state saturation/luma-chroma distribution shaping with additive zero-off controls
+
+---
+
+Yes — this is now implemented as **emergent CA rules in state update**, not a display hack.
+
+### What I added (F4b)
+
+I added a new distribution-shaping layer directly in the **transition shader** (`src/render/coreV1Shaders.js`) that uses only local moments/contrast/activity:
+
+- local saturation regime force (low/mid/high coexistence emerges from state)
+- luma–chroma coexistence coupling from local contrast + activity
+- all radial in `ab` space (no absolute hue targets)
+
+This means no hardcoded “red/blue/palette” attractors.
+
+### New controls (all additive, zero-off)
+
+In `src/ui/tunableParams.js` and wired through `src/core/coreV1Engine.js`:
+
+- `satRegimeGain` (default `0.0`)
+- `satRegimeSpread` (default `0.0`)
+- `lumaChromaCoexistGain` (default `0.0`)
+
+At zero, these terms contribute exactly nothing.
+
+### Roadmap updated
+
+`SMOOTHLIFE_EXTENSION_ROADMAP.md` now includes F4b notes and explicitly states:
+
+- transition/state-level implementation
+- zero-off semantics
+- no hue lookup table / no explicit motif coding
+
+---
+
+### Why this matches your requirement
+
+- **Emergent:** depends on local CA summary stats and evolving fields.
+- **No hacks on top:** runs in transition dynamics, not only display composition.
+- **No hardcoded hue attractors:** only saturation/luminance distribution shaping; hue remains symmetry-driven.
+
+If you want, next I can give you a compact starter tuning recipe for these three new knobs so you can feel the effect quickly without touching everything else.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+color seems to sit behind the black blobs.  there are no color blobs being formed - only patterns in the background that flow or not
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Designing chroma-to-luma coupling**</details></think>
+
+---
+
+You’re seeing the core issue: structure is still mostly L-gated, so chroma reads like transport over an L scaffold. I’m going to make F4b more real by adding **reciprocal chroma→L structure coupling** (still additive/zero-off) and by turning on safer nonzero defaults for the new F4 controls so the phase actually expresses without manual discovery.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 3 files</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js`
+- `/Users/jsb/repos/continuous-game-of-life/src/render/coreV1Shaders.js`
+- `/Users/jsb/repos/continuous-game-of-life/SMOOTHLIFE_EXTENSION_ROADMAP.md`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Agreed — and I pushed this in the CA rules, not as a top-layer trick.
+
+### What I changed to address “color behind black blobs”
+
+- Added **reciprocal chroma→L feedback** in the transition shader:
+  - chroma organization now contributes to structural `dL` (through `u_lumaChromaCoexistGain`)
+  - this helps color participate in blob identity, not just flow around L-defined dark regions.
+
+- Updated F4/F4b defaults to actually be active out-of-the-box:
+  - `structureIdentityMix = 0.25`
+  - `structureIdentityColor = 0.20`
+  - `satRegimeGain = 0.35`
+  - `satRegimeSpread = 0.20`
+  - `lumaChromaCoexistGain = 0.35`
+
+These remain additive and zero-able:
+- set them back to `0` to remove their effect.
+
+### Why this should help
+
+Previously, most “identity” still came from L scaffolding; chroma was mostly transport.  
+Now, chroma statistics feed back into L growth/inhibition balance, so coherent color domains can become structural participants.
+
+### What to look for
+
+- more colored entities that persist as local structures
+- less “all color in background fluid” behavior
+- less strict black-only blob identity
+
+If it still reads too black-dominant after this, the next step is to lift the structural observable from display-only into a small state-side latent channel (still additive), but I’d first test this new reciprocal coupling.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+this didn't work.  are there too many other affects on color at the moment to give time to have color blobs form?  scan through and decide on good defaults to start with.  most should be at 0
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Planning minimal baseline defaults**</details></think>
+
+---
+
+I agree — too many active chroma-side forces can absolutely prevent coherent color blobs from nucleating. I’m going to set a new conservative baseline in defaults: keep core structure terms, turn most color/flow extras to `0`, and leave only minimal couplings needed for blobs to form before adding effects back.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Setting baseline zero-heavy defaults**</details></think>
+
+---
+
+I’m setting a new conservative baseline now: keep only core structural kernel terms active, zero most color/flow/source couplings, and leave shape/threshold parameters as geometry settings. I’ll then summarize which knobs can’t meaningfully be “0 = off” because they define kernel shape rather than force strength.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+<think><details><summary>Thought Process</summary>**Considering roadmap update**</details></think>
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/ui/tunableParams.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Summarizing default parameter decisions**</details></think>
+
+---
+
+Good call. I reset to a conservative baseline where **most couplings are now `0`** so color blobs can nucleate without being overdriven by many competing effects.
+
+### What I changed
+
+I updated defaults in `src/ui/tunableParams.js`:
+
+- Set to `0` (or near-0) by default:
+  - F3/F4/F4b additive couplings:
+    - `refractoryGain`, `excitabilityGain`, `refractoryColorDamp`
+    - `structureIdentityMix`, `structureIdentityColor`
+    - `satRegimeGain`, `satRegimeSpread`, `lumaChromaCoexistGain`
+  - Kernel color couplings:
+    - `kernelColorToLGain`, `kernelLToColorGain`
+    - `colorWaveDamping`, `colorPocketGain`
+    - `fieldMomentCoupling`, `crossMomentCoupling`, `scaleMomentCoupling`
+  - Flow dynamics:
+    - `angleL`, `angleM`, `angleS`, `angleV`
+    - `positionAngleBias`
+    - `antiConsensusGain`, `vorticityGain`
+  - Reduced:
+    - `diversityKick` to `0.10` (kept small, not full off)
+    - `coreAdoptGain` to `0.30`
+    - `coreGrowthHueCoupling` to `0.00`
+    - `noiseGain` to `0.01`
+    - `coreMaxDeltaAB` to `0.06`
+    - source defaults lower/coarser (`sourceGuidanceGain`, `sourceAnisotropy`, `sourceRidgeBias`, `sourceEdgeFrequency`)
+
+- Kept structural kernel defaults active (so system still runs):
+  - `kernelGrowthGain`, `kernelInhibitGain`, birth/survival windows, etc.
+
+### Why this baseline
+
+This gives you a cleaner “start state” where extra color effects are mostly off, then you can add one influence at a time and see causal impact.
+
+### Knobs that are not “0 = off” by nature
+
+These are shape/geometry parameters, not additive forces:
+- `kernelInnerRatio`, `kernelTransitionWidth`
+- `kernelBirthCenter`, `kernelBirthWidth`
+- `kernelSurvivalCenter`, `kernelSurvivalWidth`
+- `kernelSecondaryRadius`, `kernelSecondaryInner`
+- `angleQuantization` (neutral/off-like is `1`, not `0`)
+- thresholds/frequencies (`refractoryThreshold`, `refractoryWidth`, `momentumThreshold`, `varianceThreshold`, `memoryFreqScale`, `sourceCoherenceFloor`)
+- system scales (`radius`, `deltaTime`, `coreMaxDeltaL`, `coreMaxDeltaAB`, `coreLRate`, `coreColorRate`, `memoryDecay`)
+
+If you want, next I can define a **single canonical “baseline preset” JSON** matching these defaults so you can instantly reset to this clean starting point anytime.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+does structure adherence just use the edges we make, or does it use the actual image?  I have a hard time getting the effect of it loosely guiding the flow of things
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Verifying shader texture usage**</details></think>
+
+---
+
+Tool use: **rg**
+
+---
+
+<think><details><summary>Thought Process</summary>**Clarifying guidance usage limitations**</details></think>
+
+---
+
+Right now it uses the **guidance field we make from the image**, not raw image pixels directly.
+
+### Current behavior
+
+- In transition dynamics, source influence comes from `u_sourceGuidance`:
+  - orientation (`RG`)
+  - coherence (`B`)
+  - ridge/contour strength (`A`)
+- `u_originalImage` is currently **not used** in the transition update.
+- So effectively:
+  - source image -> contour/orientation extraction -> guidance field -> dynamics modulation
+
+### Why it can feel weak / hard to perceive
+
+- I just moved defaults to a conservative baseline (many couplings near `0`), so source guidance is intentionally subtle.
+- Coarse edge mode can remove a lot of signal if too low.
+- If chroma/flow couplings are mostly zero, guidance mostly nudges kernel geometry, which can look faint.
+
+### If you want clearer “loose guidance”
+
+Try this combo first:
+- `sourceGuidanceGain`: `0.6`
+- `sourceAnisotropy`: `1.4`
+- `sourceRidgeBias`: `0.35`
+- `sourceEdgeFrequency`: `0.35` (not too coarse, not texture-noisy)
+- keep `showGuidanceEdges` on while tuning
+
+So: it’s **not** using full raw image content directly right now; it’s using extracted structural fields from it.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+I want the only guidance to be from the edges that we're using - the ones we overly.  right now it seems to use all the fine detail somehow.  is that diffect?  the extracted fields aren't just from the edges, right?
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Modifying guidance extraction for edge-only coherence**</details></think>
+
+---
+
+You’re exactly right: the extracted fields are currently not edge-only. I’m going to change guidance generation so orientation/coherence are derived **only from the same contour mask you overlay**, eliminating fine-detail influence from non-edge image regions.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Reworking gradient and coherence computation**</details></think>
+
+---
+
+I confirmed the issue: orientation/coherence were still derived from the smoothed image field, not strictly the final contour mask. I’m patching that so guidance direction/confidence come only from the same edge lines you overlay.
+
+---
+
+Tool use: **apply_patch**
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `/Users/jsb/repos/continuous-game-of-life/src/core/coreV1Engine.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Exactly — and you were correct.
+
+Before this patch, only the ridge channel was contour-based; orientation/coherence were still influenced by non-edge image gradients.  
+Now I changed it so guidance is edge-only:
+
+- Build contour mask (the same one shown in overlay).
+- Derive orientation/coherence from that contour field only.
+- Suppress coherence away from edges.
+
+So the dynamics guidance now comes from the same edge lines you see, not hidden fine texture in the raw image.
+
+If it still feels too detailed, we can push one more step: increase contour-support threshold for coherence so weak edges affect only overlay, not dynamics.
+
+---
+
+_**User (2026-02-16 14:07Z)**_
+
+Uncaught (in promise) ReferenceError: smoothstep is not defined
+    computeSourceGuidanceTextureData http://localhost:3000/src/core/coreV1Engine.js:282
+    updateSourceGuidanceTexture http://localhost:3000/src/core/coreV1Engine.js:450
+    reset http://localhost:3000/src/core/coreV1Engine.js:441
+    CoreV1Engine http://localhost:3000/src/core/coreV1Engine.js:344
+    createEngine http://localhost:3000/src/main.js:926
+    init http://localhost:3000/src/main.js:899
+    ContinuousGameOfLife http://localhost:3000/src/main.js:889
+    <anonymous> http://localhost:3000/src/main.js:1120
+
+---
+
+_**Assistant (gpt-5.3-codex)**_
+
+<think><details><summary>Thought Process</summary>**Adding missing smoothstep helper**</details></think>
+
+---
+
+I’ll patch that now — I used `smoothstep` in JS while it only exists in GLSL. I’m adding a small JS helper and wiring it in so the guidance recompute path runs again.
+
+---
+

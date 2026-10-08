@@ -13,6 +13,9 @@ precision highp float;
 uniform sampler2D u_texture;
 uniform sampler2D u_sourceGuidance;
 uniform float u_showGuidanceEdges;
+uniform vec2 u_texel;
+uniform float u_structureIdentityMix;
+uniform float u_structureIdentityColor;
 varying vec2 v_texCoord;
 
 vec3 hsv2rgb(vec3 c) {
@@ -29,12 +32,41 @@ void main() {
     
     // Convert (L, a, b) to RGB via HSV
     float s = clamp(length(vec2(a, b)), 0.0, 1.0);
+
+    // Phase F4: secondary structural observable for composition
+    // (purely additive in display path; mix=0 preserves current behavior).
+    vec4 nState = texture2D(u_texture, v_texCoord + vec2(0.0, u_texel.y));
+    vec4 sState = texture2D(u_texture, v_texCoord - vec2(0.0, u_texel.y));
+    vec4 eState = texture2D(u_texture, v_texCoord + vec2(u_texel.x, 0.0));
+    vec4 wState = texture2D(u_texture, v_texCoord - vec2(u_texel.x, 0.0));
+    float Ln = nState.r;
+    float Ls = sState.r;
+    float Le = eState.r;
+    float Lw = wState.r;
+    float localLMean = 0.25 * (Ln + Ls + Le + Lw);
+    float localLVar = 0.25 * (
+        (Ln - localLMean) * (Ln - localLMean) +
+        (Ls - localLMean) * (Ls - localLMean) +
+        (Le - localLMean) * (Le - localLMean) +
+        (Lw - localLMean) * (Lw - localLMean)
+    );
+    float localActivity = abs(L - state.a);
+    float structureIdentity = clamp(
+        0.55 * smoothstep(0.01, 0.20, localLVar) +
+        0.45 * smoothstep(0.02, 0.25, localActivity),
+        0.0,
+        1.0
+    );
+    float valueComposed = mix(L, clamp(L + (structureIdentity - 0.5) * 0.35, 0.0, 1.0), clamp(u_structureIdentityMix, 0.0, 1.0));
+    float satComposed = clamp(s + clamp(u_structureIdentityMix, 0.0, 1.0) * clamp(u_structureIdentityColor, 0.0, 1.0) * (structureIdentity - 0.5) * 0.6, 0.0, 1.0);
     float h = fract(atan(b, a) / 6.28318530718);
     
-    vec3 rgb = hsv2rgb(vec3(h, s, clamp(L, 0.02, 0.98)));
+    vec3 rgb = hsv2rgb(vec3(h, satComposed, clamp(valueComposed, 0.02, 0.98)));
     vec4 guidance = texture2D(u_sourceGuidance, v_texCoord);
     float edgeMask = smoothstep(0.22, 0.72, guidance.a) * clamp(u_showGuidanceEdges, 0.0, 1.0);
-    rgb = mix(rgb, vec3(1.0, 0.25, 0.05), edgeMask * 0.75);
+    float overlayOn = clamp(u_showGuidanceEdges, 0.0, 1.0);
+    vec3 dimmed = rgb * mix(1.0, 0.18, overlayOn);
+    rgb = mix(dimmed, vec3(1.0), edgeMask);
     gl_FragColor = vec4(rgb, 1.0);
 }
 `;
@@ -115,6 +147,14 @@ uniform float u_deltaTime;
 uniform float u_coreLRate;
 uniform float u_coreLDiffGain;
 uniform float u_coreMaxDeltaL;
+uniform float u_refractoryGain;
+uniform float u_refractoryThreshold;
+uniform float u_refractoryWidth;
+uniform float u_excitabilityGain;
+uniform float u_refractoryColorDamp;
+uniform float u_satRegimeGain;
+uniform float u_satRegimeSpread;
+uniform float u_lumaChromaCoexistGain;
 uniform float u_memoryDecay;
 uniform float u_historyOscillationGain;
 uniform float u_divergenceGain;
@@ -170,10 +210,16 @@ uniform float u_kernelBirthCenter;
 uniform float u_kernelBirthWidth;
 uniform float u_kernelSurvivalCenter;
 uniform float u_kernelSurvivalWidth;
+uniform float u_kernelSecondaryGain;
+uniform float u_kernelSecondaryRadius;
+uniform float u_kernelSecondaryInner;
 uniform float u_kernelColorToLGain;
 uniform float u_kernelLToColorGain;
 uniform float u_colorWaveDamping;
 uniform float u_colorPocketGain;
+uniform float u_fieldMomentCoupling;
+uniform float u_crossMomentCoupling;
+uniform float u_scaleMomentCoupling;
 uniform float u_sourceGuidanceGain;
 uniform float u_sourceAnisotropy;
 uniform float u_sourceCoherenceFloor;
@@ -221,10 +267,10 @@ float sigma_mix(float x, float y, float m, float width) {
     return mix(x, y, k);
 }
 
-vec2 sample_smoothlife_mn(vec2 uv, vec2 sourceDir, float sourceCoherence) {
+vec2 sample_smoothlife_mn(vec2 uv, vec2 sourceDir, float sourceCoherence, float outerRadiusPx, float innerRatio) {
     vec2 px = 1.0 / u_resolution;
-    float outerRadius = max(1.0, u_radius);
-    float innerRadius = outerRadius * clamp(u_kernelInnerRatio, 0.05, 0.95);
+    float outerRadius = max(1.0, outerRadiusPx);
+    float innerRadius = outerRadius * clamp(innerRatio, 0.05, 0.95);
     float coherenceGate = smoothstep(u_sourceCoherenceFloor, 1.0, sourceCoherence);
     float anisotropy = 1.0 + coherenceGate * u_sourceGuidanceGain * u_sourceAnisotropy;
     float axisLong = clamp(anisotropy, 1.0, 6.0);
@@ -368,10 +414,14 @@ void main() {
     vec2 abMean = vec2(aMean, bMean);
     float chromaMismatch = length(abMean - abNow);
 
-    // SmoothLife-style neighborhood measurements: inner mass m and outer shell n
-    vec2 mn = sample_smoothlife_mn(v_texCoord, sourceDir, sourceCoherence);
+    // SmoothLife-style neighborhood measurements: primary and secondary structural scales.
+    vec2 mn = sample_smoothlife_mn(v_texCoord, sourceDir, sourceCoherence, u_radius, u_kernelInnerRatio);
     float m = mn.x;
     float n = mn.y;
+    float secondaryRadius = u_radius * max(1.0, u_kernelSecondaryRadius);
+    vec2 mn2 = sample_smoothlife_mn(v_texCoord, sourceDir, sourceCoherence, secondaryRadius, u_kernelSecondaryInner);
+    float m2 = mn2.x;
+    float n2 = mn2.y;
 
     float birthLow = clamp(u_kernelBirthCenter - 0.5 * u_kernelBirthWidth, 0.0, 1.0);
     float birthHigh = clamp(u_kernelBirthCenter + 0.5 * u_kernelBirthWidth, 0.0, 1.0);
@@ -383,24 +433,47 @@ void main() {
     float smoothlifeS = sigma_n(n, low, high, u_kernelTransitionWidth);
     float smoothlifeSignal = 2.0 * smoothlifeS - 1.0;
     float lateralInhibition = max(0.0, n - m);
+    float smoothlifeS2 = sigma_n(n2, low, high, u_kernelTransitionWidth);
+    float smoothlifeSignal2 = 2.0 * smoothlifeS2 - 1.0;
+    float lateralInhibition2 = max(0.0, n2 - m2);
     // Keep color->L coupling centered and bounded so it does not create global bright bias.
     float colorToL = u_kernelColorToLGain * clamp(chromaMismatch - 0.22, -0.20, 0.20);
     // Encourage true dark voids when both inner and outer densities are low.
     float voidness = (1.0 - smoothstep(0.08, 0.22, m)) * (1.0 - smoothstep(0.08, 0.22, n));
     float voidDarkening = (0.15 + 0.5 * u_kernelInhibitGain) * voidness;
+    float voidness2 = (1.0 - smoothstep(0.08, 0.22, m2)) * (1.0 - smoothstep(0.08, 0.22, n2));
+    float voidDarkening2 = (0.15 + 0.5 * u_kernelInhibitGain) * voidness2;
     float coherenceGate = smoothstep(u_sourceCoherenceFloor, 1.0, sourceCoherence);
     float sourceGain = u_sourceGuidanceGain * coherenceGate;
     float ridgeCentered = sourceRidge * 2.0 - 1.0;
     float localGrowthGain = u_kernelGrowthGain * (1.0 + sourceGain * u_sourceRidgeBias * ridgeCentered);
     float localInhibitGain = u_kernelInhibitGain * (1.0 - 0.5 * sourceGain * u_sourceRidgeBias * ridgeCentered);
+    float satMean = length(abMean);
+    float fieldMomentL = lStddev * abs(chromaMismatch - satMean);
+    float crossMomentL = (lNow - lMean) * (satNow - satMean);
+    float scaleMomentL = chromaMismatch - satMean;
+    float chromaToLCoexist = (satNow - satMean) * (0.4 + 0.6 * clamp(chromaMismatch * 2.0, 0.0, 1.0));
+    float implicitCouplingL =
+        u_fieldMomentCoupling * fieldMomentL +
+        u_crossMomentCoupling * crossMomentL +
+        u_scaleMomentCoupling * scaleMomentL;
     localGrowthGain = max(0.0, localGrowthGain);
     localInhibitGain = max(0.0, localInhibitGain);
     float kernelContribution = u_kernelBlend * (
         smoothlifeSignal * localGrowthGain
         - lateralInhibition * localInhibitGain
         + colorToL
+        + 0.22 * u_lumaChromaCoexistGain * chromaToLCoexist
         - voidDarkening
     );
+    float kernelSecondaryContribution = u_kernelBlend * u_kernelSecondaryGain * (
+        smoothlifeSignal2 * localGrowthGain
+        - lateralInhibition2 * localInhibitGain
+        - voidDarkening2
+    );
+    // Strictly additive implicit coupling: zero knobs -> exact pre-coupling behavior.
+    kernelContribution += u_kernelBlend * 0.2 * clamp(implicitCouplingL, -1.0, 1.0);
+    kernelContribution += kernelSecondaryContribution;
 
     // === L UPDATE: Oscillatory dynamics ===
     float dL = 0.0;
@@ -508,6 +581,22 @@ void main() {
     float legacyScale = 1.0 - clamp(u_kernelBlend, 0.0, 1.0);
     dL = kernelContribution + (dL - kernelContribution) * legacyScale;
 
+    // Refractory / excitability layer (Phase F3):
+    // derive refractory from local activity proxy using existing state (L, M, local variance).
+    // All terms are additive and zero-able by knobs.
+    float activityProxy = abs(lNow - M) + 0.6 * lStddev;
+    float refractory = smoothstep(
+        u_refractoryThreshold,
+        u_refractoryThreshold + max(0.01, u_refractoryWidth),
+        activityProxy
+    );
+    float refractoryScale = max(0.0, 1.0 - u_refractoryGain * refractory);
+    float dLpos = max(0.0, dL) * refractoryScale;
+    float dLneg = min(0.0, dL);
+    float lowVarianceExcitability = 1.0 - smoothstep(0.05, 0.25, lStddev);
+    float excitabilityTerm = u_excitabilityGain * (1.0 - refractory) * lowVarianceExcitability * (lMean - lNow);
+    dL = dLpos + dLneg + excitabilityTerm;
+
     // Apply rate limiting and clamp
     float dLClamped = clamp(dL, -u_coreMaxDeltaL, u_coreMaxDeltaL);
     float lNew = clamp(lNow + dLClamped * u_coreLRate * u_deltaTime, 0.0, 1.0);
@@ -538,7 +627,7 @@ void main() {
     float dGlobalMag = length(dGlobal);
     float dLocalMag = length(dLocal);
     // Localize chroma transport under kernel mode / wave damping:
-    // use nearby consensus more than full-radius consensus to avoid global stripe lock-in.
+    // use nearby consensus more than full-radius consensus to avoid global phase lock-in.
     float localRefBlend = clamp(0.15 + 0.55 * u_colorWaveDamping + 0.30 * u_kernelBlend, 0.0, 1.0);
     vec2 abRef = mix(abMean, abLocalMean, localRefBlend);
     vec2 d = abRef - abNow;
@@ -549,41 +638,92 @@ void main() {
     // Compute L momentum for use in multiple mechanisms
     float L_momentum = lNew - M;
     
-    // (A) Non-monotonic adoption - TRULY non-monotonic with repulsion!
-    // Very similar: REPEL (prevents uniformity)
-    // Similar: Neutral zone
-    // Medium difference: Strong adoption (propagate waves)
-    // Large difference: Weak adoption (maintain boundaries)
-    float adoptStrength = 0.0;
-    if (dLocalMag < 0.04) {
-        adoptStrength = -0.3;  // REPEL when very similar - anti-degeneracy!
-    } else if (dLocalMag < 0.09) {
-        adoptStrength = 0.0;   // Neutral zone
-    } else if (dLocalMag < 0.28) {
-        adoptStrength = 1.2;   // Strong local adoption (pockets)
-    } else {
-        adoptStrength = 0.25;  // Weak adoption for large jumps (preserve boundaries)
-    }
+    // (A) Non-monotonic adoption (continuous):
+    // smooth repel -> neutral -> strong mid-band adoption -> weak far adoption.
+    // This keeps transport emergent from local mismatch fields without hard branch thresholds.
+    float repelGate = 1.0 - smoothstep(0.02, 0.05, dLocalMag);
+    float midGate = smoothstep(0.07, 0.14, dLocalMag) * (1.0 - smoothstep(0.26, 0.40, dLocalMag));
+    float farGate = smoothstep(0.30, 0.55, dLocalMag);
+    float adoptStrength = -0.30 * repelGate + 1.20 * midGate + 0.25 * farGate;
     float locality = clamp(dLocalMag / (dGlobalMag + 1.0e-4), 0.0, 1.0);
     float waveDampScale = mix(1.0, locality, clamp(u_colorWaveDamping, 0.0, 1.0));
     dAB += d * adoptStrength * u_coreAdoptGain * waveDampScale;
 
-    // Pocket reinforcement: pull toward local neighborhood center (not global field).
-    dAB += dLocal * u_colorPocketGain;
-
-    // Stripe quench: if high saturation aligns over large scale, damp saturation locally.
+    // Local moment coupling (implicit): local variances/covariance/scale separation
+    // modulate chroma transport without explicit motif detectors.
     float satNorth = length(ab_north);
     float satSouth = length(ab_south);
     float satEast = length(ab_east);
     float satWest = length(ab_west);
     float satLocalMean = 0.25 * (satNorth + satSouth + satEast + satWest);
+    float satLocalVar = 0.25 * (
+        (satNorth - satLocalMean) * (satNorth - satLocalMean) +
+        (satSouth - satLocalMean) * (satSouth - satLocalMean) +
+        (satEast - satLocalMean) * (satEast - satLocalMean) +
+        (satWest - satLocalMean) * (satWest - satLocalMean)
+    );
+    float lLocalMean = 0.25 * (L_n + L_s + L_e + L_w);
+    float lLocalVar = 0.25 * (
+        (L_n - lLocalMean) * (L_n - lLocalMean) +
+        (L_s - lLocalMean) * (L_s - lLocalMean) +
+        (L_e - lLocalMean) * (L_e - lLocalMean) +
+        (L_w - lLocalMean) * (L_w - lLocalMean)
+    );
+    float fieldMomentAB = sqrt(max(0.0, satLocalVar * lLocalVar));
+    float crossMomentAB = (lNow - lLocalMean) * (satNow - satLocalMean);
+    float scaleMomentAB = dGlobalMag - dLocalMag;
+    float implicitCouplingAB =
+        u_fieldMomentCoupling * fieldMomentAB +
+        u_crossMomentCoupling * crossMomentAB +
+        u_scaleMomentCoupling * scaleMomentAB;
+
+    // Base behavior (pre-implicit coupling)
+    dAB += dLocal * u_colorPocketGain;
+    // Strictly additive implicit coupling term
+    dAB += dLocal * (0.35 * implicitCouplingAB);
+
+    // Intrinsic chroma anti-collapse term (deterministic, field-driven):
+    // Even with DiversityKick=0, local gradients/moments keep chroma from becoming an absorbing gray state.
+    vec2 gradLVec = vec2(L_e - L_w, L_n - L_s);
+    vec2 gradSatVec = vec2(satEast - satWest, satNorth - satSouth);
+    vec2 intrinsicBasis = gradLVec + rotate_vector(gradSatVec, PI * 0.5);
+    intrinsicBasis += sourceDir * (0.35 + 0.65 * sourceCoherence);
+    float intrinsicLen = length(intrinsicBasis);
+    vec2 intrinsicDir = intrinsicLen > 1.0e-5 ? intrinsicBasis / intrinsicLen : vec2(1.0, 0.0);
+    float lowSat = smoothstep(0.22, 0.02, satNow);
+    float localActivity = clamp(0.45 * abs(smoothlifeSignal) + 0.35 * lStddev + 0.35 * abs(lNow - M), 0.0, 1.0);
+    float intrinsicStrength = lowSat * localActivity * (0.035 + 0.20 * u_diversityKick);
+    dAB += intrinsicDir * intrinsicStrength;
+
+    // Coherent high-saturation regions relax slightly to avoid global lock-in.
     float satExcess = max(0.0, satNow - satLocalMean);
-    float stripeMode = smoothstep(0.55, 0.95, satNow) * (1.0 - clamp(dLocalMag / 0.16, 0.0, 1.0));
+    float coherenceLock = smoothstep(0.55, 0.95, satNow) * (1.0 - clamp(dLocalMag / 0.16, 0.0, 1.0));
+    vec2 satDir = satNow > 1.0e-5 ? (abNow / satNow) : intrinsicDir;
     if (satNow > 1.0e-5) {
-        vec2 satDir = abNow / satNow;
-        float quench = stripeMode * (0.08 + satExcess * 0.4) * clamp(u_colorWaveDamping, 0.0, 1.0);
+        float quenchBase = coherenceLock * (0.06 + satExcess * 0.25) * clamp(u_colorWaveDamping, 0.0, 1.0);
+        float quenchAdd = coherenceLock * (0.05 * max(0.0, implicitCouplingAB)) * clamp(u_colorWaveDamping, 0.0, 1.0);
+        float quench = quenchBase + quenchAdd;
         dAB -= satDir * quench;
     }
+
+    // Emergent saturation-distribution shaping (Phase F4b, state dynamics):
+    // no absolute hue targets; only local moments/contrast/activity drive regime formation.
+    float satVar = sqrt(max(0.0, satLocalVar));
+    float lContrastLocal = abs(lNow - lLocalMean);
+    float activityState = clamp(0.55 * abs(lNow - M) + 0.35 * lStddev + 0.25 * dLocalMag, 0.0, 1.0);
+    float regimeGate = smoothstep(0.08, 0.45, activityState + satVar + lContrastLocal);
+    float satLowRegime = clamp(0.06 + 0.24 * satLocalMean, 0.02, 0.40);
+    float satHighRegime = clamp(0.42 + 0.45 * satVar + 0.20 * lStddev, 0.20, 1.00);
+    float satTarget = mix(satLowRegime, satHighRegime, regimeGate);
+    // Spread term broadens coexistence of sat regimes (without hue preference).
+    float satSpread = u_satRegimeSpread * (satNow - satTarget) * (0.5 - abs(satNow - 0.5));
+    float satRegimeForce = (satTarget - satNow) + satSpread;
+    dAB += satDir * (u_satRegimeGain * satRegimeForce);
+
+    // Luma/chroma coexistence coupling:
+    // preserves chroma through dark/bright structural contrast when local activity supports it.
+    float coexistSignal = (lContrastLocal + 0.6 * activityState) * (0.55 + 0.45 * satVar);
+    dAB += satDir * (u_lumaChromaCoexistGain * coexistSignal * 0.25);
     
     // (B) State-dependent rotation driven by L momentum
     // Angle varies based on cell state - creates heterogeneous dynamics
@@ -605,30 +745,25 @@ void main() {
     float noiseScale = u_noiseGain * (1.0 - abs(L_momentum * 5.0));
     dAB += noiseVec * noiseScale;
     
-    // (E) Diversity kick with STATE-DEPENDENT angle
-    // When colors too uniform, push in direction determined by cell state
-    // uniformity already defined above from length(d)
-    if (uniformity < 0.05) {
-        float strength = (0.05 - uniformity) / 0.05;
-        float angle = compute_state_angle(lNew, M, length(abNow), lStddev);
-        vec2 base = length(abNow) > 1.0e-5 ? normalize(abNow) : vec2(1.0, 0.0);
-        vec2 kick_dir = rotate_vector(base, angle);
-        dAB += kick_dir * strength * u_diversityKick;
-    }
+    // (E) Diversity kick with STATE-DEPENDENT angle (continuous gate)
+    // uniformity already defined above from local mismatch.
+    float uniformKick = 1.0 - smoothstep(0.02, 0.08, uniformity);
+    float angle = compute_state_angle(lNew, M, length(abNow), lStddev);
+    vec2 base = length(abNow) > 1.0e-5 ? normalize(abNow) : vec2(1.0, 0.0);
+    vec2 kick_dir = rotate_vector(base, angle);
+    dAB += kick_dir * uniformKick * u_diversityKick;
     
     // (F) Chroma Laplacian Anti-Consensus with STATE-DEPENDENT angle
     // Flat color fields develop structure in state-dependent directions
     vec2 laplacian_ab = (ab_north + ab_south + ab_east + ab_west) - 4.0 * abNow;
     float curvature = length(laplacian_ab);
     
-    if (curvature < 0.02) {
-        float flatness = (0.02 - curvature) / 0.02;
-        float angle = compute_state_angle(lNew, M, length(abNow), lStddev);
-        vec2 diff_ab = abNow - abMean;
-        vec2 base = length(diff_ab) > 1.0e-5 ? normalize(diff_ab) : vec2(1.0, 0.0);
-        vec2 anti_consensus_dir = rotate_vector(base, angle);
-        dAB += anti_consensus_dir * flatness * u_antiConsensusGain;
-    }
+    float flatness = 1.0 - smoothstep(0.008, 0.03, curvature);
+    float antiAngle = compute_state_angle(lNew, M, length(abNow), lStddev);
+    vec2 diff_ab = abNow - abMean;
+    vec2 antiBase = length(diff_ab) > 1.0e-5 ? normalize(diff_ab) : vec2(1.0, 0.0);
+    vec2 anti_consensus_dir = rotate_vector(antiBase, antiAngle);
+    dAB += anti_consensus_dir * flatness * u_antiConsensusGain;
     
     // (G) Vorticity Color Rotation - ADDITIVE with state angle
     // L field circulation adds to state-dependent rotation
@@ -636,13 +771,17 @@ void main() {
     float dLdy = (L_n - L_s) * 0.5;
     float circulation = dLdx - dLdy;
     
-    if (abs(circulation) > 0.01) {
-        float base_angle = compute_state_angle(lNew, M, length(abNow), lStddev);
-        float vorticity_angle = base_angle + circulation * 3.0;  // Vorticity adds to state angle
-        vec2 base = length(abNow) > 1.0e-5 ? normalize(abNow) : vec2(0.0);
-        vec2 vorticity_dir = rotate_vector(base, vorticity_angle);
-        dAB += vorticity_dir * abs(circulation) * u_vorticityGain;
-    }
+    float circulationAbs = abs(circulation);
+    float vorticityGate = smoothstep(0.005, 0.05, circulationAbs);
+    float base_angle = compute_state_angle(lNew, M, length(abNow), lStddev);
+    float vorticity_angle = base_angle + circulation * 3.0;  // Vorticity adds to state angle
+    vec2 vortBase = length(abNow) > 1.0e-5 ? normalize(abNow) : vec2(0.0);
+    vec2 vorticity_dir = rotate_vector(vortBase, vorticity_angle);
+    dAB += vorticity_dir * circulationAbs * vorticityGate * u_vorticityGain;
+
+    // Refractory damping for chroma transport (additive gate, zero-able with knob).
+    float chromaRefractoryScale = max(0.0, 1.0 - u_refractoryColorDamp * refractory);
+    dAB *= chromaRefractoryScale;
     
     // Apply rate limiting
     dAB *= u_coreColorRate * u_deltaTime;

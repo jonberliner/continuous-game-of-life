@@ -754,6 +754,123 @@ class AutoTuner {
     }
 }
 
+class KernelDiagnostics {
+    constructor() {
+        this.intervalSimSteps = 64;
+        this.stepAccum = 0;
+        this.prevSample = null;
+        this.ema = null;
+    }
+
+    reset() {
+        this.stepAccum = 0;
+        this.prevSample = null;
+        this.ema = null;
+    }
+
+    tick({ mode, engine, controls, simStepsAdvanced }) {
+        if (!controls || typeof controls.setKernelDiagnosticsText !== 'function') return;
+        if (mode !== 'spatial' || typeof engine.readCurrentStatePixels !== 'function') {
+            controls.setKernelDiagnosticsText('Kernel diagnostics: spatial mode only.');
+            return;
+        }
+        this.stepAccum += Math.max(0, simStepsAdvanced || 0);
+        if (this.stepAccum < this.intervalSimSteps) return;
+        this.stepAccum -= this.intervalSimSteps;
+
+        const pixels = engine.readCurrentStatePixels();
+        const metrics = this.computeMetrics(pixels, engine.width, engine.height);
+        if (!metrics) {
+            controls.setKernelDiagnosticsText('Kernel diagnostics warming up...');
+            return;
+        }
+        const smooth = this.smooth(metrics);
+        const parity = smooth.absDL > 1.0e-6 ? smooth.absDAB / smooth.absDL : 0.0;
+        const parityState = parity < 0.7 ? 'L-dominant' : (parity > 1.5 ? 'Chroma-dominant' : 'balanced');
+        controls.setKernelDiagnosticsText(
+            `Parity |dAB|/|dL| ${parity.toFixed(2)} (${parityState}) | ` +
+            `|dL| ${smooth.absDL.toFixed(4)} | |dAB| ${smooth.absDAB.toFixed(4)} | ` +
+            `varL ${smooth.varL.toFixed(4)} | varS ${smooth.varS.toFixed(4)}`
+        );
+    }
+
+    computeMetrics(pixels, width, height) {
+        const stride = Math.max(4, Math.floor(Math.min(width, height) / 96));
+        const sw = Math.max(2, Math.floor(width / stride));
+        const sh = Math.max(2, Math.floor(height / stride));
+        const n = sw * sh;
+        const lum = new Float32Array(n);
+        const a = new Float32Array(n);
+        const b = new Float32Array(n);
+
+        let k = 0;
+        for (let y = 0; y < sh; y++) {
+            const py = Math.min(height - 1, y * stride);
+            for (let x = 0; x < sw; x++) {
+                const px = Math.min(width - 1, x * stride);
+                const i = (py * width + px) * 4;
+                lum[k] = pixels[i] / 255.0;
+                a[k] = (pixels[i + 1] / 255.0) * 2.0 - 1.0;
+                b[k] = (pixels[i + 2] / 255.0) * 2.0 - 1.0;
+                k++;
+            }
+        }
+
+        if (!this.prevSample) {
+            this.prevSample = { lum, a, b };
+            return null;
+        }
+
+        let absDL = 0.0;
+        let absDAB = 0.0;
+        let meanL = 0.0;
+        let meanS = 0.0;
+        for (let i = 0; i < n; i++) {
+            const dl = Math.abs(lum[i] - this.prevSample.lum[i]);
+            const da = a[i] - this.prevSample.a[i];
+            const db = b[i] - this.prevSample.b[i];
+            absDL += dl;
+            absDAB += Math.sqrt(da * da + db * db);
+            meanL += lum[i];
+            meanS += Math.sqrt(a[i] * a[i] + b[i] * b[i]);
+        }
+        meanL /= n;
+        meanS /= n;
+
+        let varL = 0.0;
+        let varS = 0.0;
+        for (let i = 0; i < n; i++) {
+            const sat = Math.sqrt(a[i] * a[i] + b[i] * b[i]);
+            const dL = lum[i] - meanL;
+            const dS = sat - meanS;
+            varL += dL * dL;
+            varS += dS * dS;
+        }
+        varL /= n;
+        varS /= n;
+
+        this.prevSample = { lum, a, b };
+        return {
+            absDL: absDL / n,
+            absDAB: absDAB / n,
+            varL,
+            varS
+        };
+    }
+
+    smooth(metrics) {
+        if (!this.ema) {
+            this.ema = { ...metrics };
+            return this.ema;
+        }
+        const alpha = 0.3;
+        for (const key of Object.keys(metrics)) {
+            this.ema[key] = this.ema[key] * (1 - alpha) + metrics[key] * alpha;
+        }
+        return this.ema;
+    }
+}
+
 class ContinuousGameOfLife {
     constructor() {
         this.canvas = document.getElementById('glCanvas');
@@ -767,6 +884,7 @@ class ContinuousGameOfLife {
         this.simAccumulator = 0;
         this.fixedSimulationDelta = 0.2; // Keep simulation dynamics stable; speed controls rate only.
         this.autoTuner = new AutoTuner();
+        this.kernelDiagnostics = new KernelDiagnostics();
         
         this.init();
     }
@@ -821,6 +939,7 @@ class ContinuousGameOfLife {
             );
         }
         this.autoTuner.reset();
+        this.kernelDiagnostics.reset();
     }
     
     switchMode(mode) {
@@ -905,6 +1024,7 @@ class ContinuousGameOfLife {
         
         this.engine.reset();
         this.simAccumulator = 0;
+        this.kernelDiagnostics.reset();
         this.engine.render();
         
         if (wasRunning) {
@@ -970,6 +1090,12 @@ class ContinuousGameOfLife {
                 controls: this.controls,
                 params,
                 imageData: this.imageData,
+                simStepsAdvanced: steps
+            });
+            this.kernelDiagnostics.tick({
+                mode: this.mode,
+                engine: this.engine,
+                controls: this.controls,
                 simStepsAdvanced: steps
             });
         }

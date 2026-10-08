@@ -15,80 +15,21 @@
 export const TUNABLE_PARAMS = [
 
     // ================================================================
-    //  LUMINANCE (L) DYNAMICS
+    //  KERNEL-ONLY CORE (kernel blend fixed to 1.0)
     // ================================================================
     
-    { key: 'coreLRate',              default: 1.00, min: 0.0,   max: 10.0, step: 0.1,   group: 'Luminance (L)', label: 'L Update Rate',           hint: '↑ Faster L changes, more responsive. ↓ Slower, more inertial',      shader: 'transition' },
-    { key: 'coreLDiffGain',          default: 0.50, min: 0.0,   max: 2.0,  step: 0.1,   group: 'Luminance (L)', label: 'L Diffusion',             hint: '↑ More smoothing, larger bright/dark regions. ↓ More isolated',     shader: 'transition' },
-    { key: 'memoryDecay',            default: 0.05, min: 0.01,  max: 0.20, step: 0.01,  group: 'Luminance (L)', label: 'Memory Decay',            hint: '↑ Faster momentum tracking, smaller oscillations. ↓ Slower, larger waves', shader: 'transition' },
-    { key: 'historyOscillationGain', default: 0.80, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Luminance (L)', label: 'Oscillation Strength',    hint: '↑ Stronger anti-damping, perpetual motion. ↓ Can reach equilibrium', shader: 'transition' },
-    { key: 'divergenceGain',         default: 0.60, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Luminance (L)', label: 'Divergence',              hint: '↑ Similar cells pushed apart more, prevents uniformity. ↓ Allows similarity', shader: 'transition' },
-    { key: 'moderationGain',         default: 0.20, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Luminance (L)', label: 'Moderation',              hint: '↑ Very different cells pulled together. ↓ Allows extreme differences', shader: 'transition' },
-    { key: 'varianceAmplifyGain',    default: 0.50, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Luminance (L)', label: 'Variance Boost',          hint: '↑ Amplifies changes at borders more. ↓ Uniform change rate',        shader: 'transition' },
-    { key: 'flatBreakupGain',        default: 0.50, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Luminance (L)', label: 'Flat Breakup',            hint: '↑ Destabilizes flat regions more, adds texture. ↓ Flat more stable', shader: 'transition' },
-    { key: 'noiseGain',              default: 0.05, min: 0.0,   max: 0.10, step: 0.005, group: 'Luminance (L)', label: 'Noise',                   hint: '↑ More random perturbation, less predictable. ↓ More deterministic', shader: 'transition' },
-    { key: 'contrastGain',           default: 0.50, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Luminance (L)', label: 'Contrast',                hint: '↑ Sharper L boundaries, crisper edges. ↓ Softer gradients',         shader: 'transition' },
-    { key: 'coreMaxDeltaL',          default: 0.08, min: 0.01,  max: 0.30, step: 0.01,  group: 'Luminance (L)', label: 'Max L Change/Step',       hint: '↑ Allows faster L jumps per frame. ↓ Slower, smoother evolution',   shader: 'transition' },
-
-    // ================================================================
-    //  CHROMA (COLOR) DYNAMICS
-    // ================================================================
-    
-    { key: 'coreColorRate',          default: 1.00, min: 0.0,   max: 10.0, step: 0.1,   group: 'Chroma (Color)', label: 'Color Update Rate',       hint: '↑ Faster color changes, dynamic hues. ↓ Slower, more stable colors', shader: 'transition' },
-    { key: 'coreAdoptGain',          default: 1.00, min: 0.0,   max: 4.0,  step: 0.1,   group: 'Chroma (Color)', label: 'Color Adoption',          hint: '↑ Stronger color mixing from neighbors. ↓ More isolated colors',      shader: 'transition' },
-    { key: 'coreGrowthHueCoupling',  default: 0.40, min: 0.0,   max: 2.0,  step: 0.1,   group: 'Chroma (Color)', label: 'Momentum Hue Coupling',   hint: '↑ L momentum drives more hue rotation. ↓ Less rotation',              shader: 'transition' },
-    { key: 'coreMaxDeltaAB',         default: 0.08, min: 0.01,  max: 0.30, step: 0.01,  group: 'Chroma (Color)', label: 'Max Color Change/Step',   hint: '↑ Faster color jumps per frame. ↓ Slower, smoother transitions',      shader: 'transition' },
-
-    // ================================================================
-    //  DIVERSITY & ANTI-DEGENERACY
-    // ================================================================
-    
-    { key: 'diversityKick',          default: 0.50, min: 0.0,   max: 2.0,  step: 0.1,   group: 'Diversity', label: 'Diversity Kick',         hint: '↑ Stronger push when colors uniform, more variety. ↓ Allows uniformity', shader: 'transition' },
-    { key: 'antiConsensusGain',      default: 0.40, min: 0.0,   max: 1.5,  step: 0.05,  group: 'Diversity', label: 'Anti-Consensus',         hint: '↑ Flat color fields break up more. ↓ Flat patches more stable',       shader: 'transition' },
-    { key: 'vorticityGain',          default: 0.15, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Diversity', label: 'Vorticity',              hint: '↑ L field circulation drives color spirals more. ↓ Less spirals',     shader: 'transition' },
-
-    // ================================================================
-    //  STATE-DEPENDENT ANGLES
-    // ================================================================
-    
-    { key: 'angleL',                 default: 0.5,  min: -2.0,  max: 2.0,  step: 0.1,   group: 'State Angles', label: 'L → Angle',        hint: '↑ Bright/dark regions rotate more differently. ↓ Less L effect. Negative reverses',    shader: 'transition' },
-    { key: 'angleM',                 default: 1.0,  min: -2.0,  max: 2.0,  step: 0.1,   group: 'State Angles', label: 'Momentum → Angle', hint: '↑ Oscillation phase determines rotation more (vortex pairs). ↓ Less phase effect. Negative reverses', shader: 'transition' },
-    { key: 'angleS',                 default: 0.3,  min: -2.0,  max: 2.0,  step: 0.1,   group: 'State Angles', label: 'Saturation → Angle', hint: '↑ Vivid vs gray colors behave more differently. ↓ Less saturation effect. Negative reverses',  shader: 'transition' },
-    { key: 'angleV',                 default: 0.8,  min: 0.0,   max: 2.0,  step: 0.1,   group: 'State Angles', label: 'Variance → Angle', hint: '↑ Borders have stronger tangential flow (around obstacles). ↓ More direct flow. Always positive', shader: 'transition' },
-
-    // ================================================================
-    //  ANGLE DEGENERACY FIXES
-    // ================================================================
-    
-    { key: 'angleQuantization',      default: 4.0,  min: 1.0,   max: 16.0, step: 1.0,   group: 'Angle Fixes', label: 'Angle Quantization',   hint: '↑ More discrete rotation directions (16=fine). ↓ Fewer (4=quadrants). 1=continuous smooth spirals', shader: 'transition' },
-    { key: 'spatialFrequency',       default: 5.0,  min: 1.0,   max: 20.0, step: 1.0,   group: 'Angle Fixes', label: 'Spatial Frequency',    hint: '↑ Finer spatial variation in angles, smaller domains. ↓ Coarser, larger domains',        shader: 'transition' },
-    { key: 'positionAngleBias',      default: 0.5,  min: 0.0,   max: 2.0,  step: 0.1,   group: 'Angle Fixes', label: 'Position Bias',        hint: '↑ Stronger position-dependent rotation, breaks sync. ↓ More uniform angles',            shader: 'transition' },
-    { key: 'momentumThreshold',      default: 0.8,  min: 0.5,   max: 2.0,  step: 0.1,   group: 'Angle Fixes', label: 'Momentum Lock',        hint: '↑ Higher momentum needed for perpendicular lock. ↓ Locks easier (more vortex cores)',   shader: 'transition' },
-    { key: 'varianceThreshold',      default: 0.6,  min: 0.3,   max: 1.5,  step: 0.1,   group: 'Angle Fixes', label: 'Variance Lock',        hint: '↑ Higher variance needed for tangent lock. ↓ Tangent flow triggers easier at borders',  shader: 'transition' },
-    { key: 'memoryFreqScale',        default: 10.0, min: 1.0,   max: 50.0, step: 1.0,   group: 'Angle Fixes', label: 'Memory Frequency',     hint: '↑ More spatial variation in oscillation rate. ↓ More uniform oscillation',              shader: 'transition' },
-
-    // ================================================================
-    //  MULTI-STABLE ATTRACTORS
-    // ================================================================
-    
-    { key: 'attractorGain',          default: 0.30, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Attractors', label: 'Attractor Strength',  hint: '↑ Stronger pull to discrete L levels, more clustering. ↓ More continuous brightness',    shader: 'transition' },
-    { key: 'attractor1',             default: 0.15, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Attractors', label: 'Dark Level',          hint: 'Position of dark attractor (0=black, 1=white). Cells cluster near this value',          shader: 'transition' },
-    { key: 'attractor2',             default: 0.50, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Attractors', label: 'Mid Level',           hint: 'Position of mid attractor. Cells cluster near this value',                              shader: 'transition' },
-    { key: 'attractor3',             default: 0.85, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Attractors', label: 'Bright Level',        hint: 'Position of bright attractor. Cells cluster near this value',                           shader: 'transition' },
-
-    // ================================================================
-    //  BOUNDARY SHARPENING
-    // ================================================================
-    
-    { key: 'boundaryAmplify',        default: 0.50, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Boundaries', label: 'Amplification',      hint: '↑ Sharper state transitions, snappier changes. ↓ Smoother gradual transitions',          shader: 'transition' },
-    { key: 'hysteresisGain',         default: 0.30, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Boundaries', label: 'Hysteresis',         hint: '↑ More resistance to mid-range changes, more stable. ↓ Easier to transition',           shader: 'transition' },
-    { key: 'competitionGain',        default: 0.40, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Boundaries', label: 'Competition',        hint: '↑ Stronger winner-take-all, larger differences. ↓ More egalitarian, smaller differences', shader: 'transition' },
-
-    // ================================================================
-    //  HYBRID SMOOTHLIFE KERNEL (PHASE A)
-    // ================================================================
-    
-    { key: 'kernelBlend',            default: 0.00, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Kernel Blend',      hint: '↑ Blend in SmoothLife core dynamics. 0 keeps legacy behavior',                           shader: 'transition' },
+    { key: 'coreLRate',              default: 1.00, min: 0.0,   max: 10.0, step: 0.1,   group: 'Kernel Core', label: 'L Update Rate',         hint: 'Global L rate for kernel-driven dynamics',                                                shader: 'transition' },
+    { key: 'coreMaxDeltaL',          default: 0.08, min: 0.01,  max: 0.30, step: 0.01,  group: 'Kernel Core', label: 'Max L Change/Step',    hint: 'Rate limiter for L updates',                                                              shader: 'transition' },
+    { key: 'refractoryGain',         default: 0.00, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Core', label: 'Refractory Gain',      hint: 'Suppresses rapid re-activation after high local activity (0 = off)',                     shader: 'transition' },
+    { key: 'refractoryThreshold',    default: 0.12, min: 0.0,   max: 0.50, step: 0.01,  group: 'Kernel Core', label: 'Refractory Threshold', hint: 'Activity level where refractory suppression starts',                                       shader: 'transition' },
+    { key: 'refractoryWidth',        default: 0.10, min: 0.01,  max: 0.50, step: 0.01,  group: 'Kernel Core', label: 'Refractory Width',     hint: 'Smoothness of refractory onset region',                                                   shader: 'transition' },
+    { key: 'excitabilityGain',       default: 0.00, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Core', label: 'Excitability Gain',    hint: 'Low-activity wake-up drive from local state gradients (0 = off)',                        shader: 'transition' },
+    { key: 'refractoryColorDamp',    default: 0.00, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Core', label: 'Refractory Color Damp', hint: 'Damps chroma transport during refractory periods',                                        shader: 'transition' },
+    { key: 'structureIdentityMix',   default: 0.00, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Kernel Core', label: 'Structure Identity Mix', hint: 'Blends local structural observable into value composition (0 = classic L-only display)',   shader: 'display' },
+    { key: 'structureIdentityColor', default: 0.00, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Kernel Core', label: 'Identity Color Lift',   hint: 'Lets structured regions retain more chroma when identity mix is active (0 = off)',       shader: 'display' },
+    { key: 'satRegimeGain',          default: 0.10, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Core', label: 'Saturation Regime Gain', hint: 'Emergent local sat-regime shaping in CA state update (0 = off)',                        shader: 'transition' },
+    { key: 'satRegimeSpread',        default: 0.08, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Core', label: 'Saturation Regime Spread', hint: 'Broadens coexistence of low/mid/high saturation regimes (0 = off)',                     shader: 'transition' },
+    { key: 'lumaChromaCoexistGain',  default: 0.20, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Core', label: 'Luma-Chroma Coexistence', hint: 'Couples L contrast/activity to chroma persistence and chroma->L feedback (0 = off)',     shader: 'transition' },
     { key: 'kernelGrowthGain',       default: 0.25, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Kernel Growth Gain', hint: '↑ Stronger SmoothLife growth/survival drive on L',                                         shader: 'transition' },
     { key: 'kernelInhibitGain',      default: 0.20, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Lateral Inhibition', hint: '↑ More mid-range suppression (helps discrete local regions)',                              shader: 'transition' },
     { key: 'kernelInnerRatio',       default: 0.50, min: 0.20,  max: 0.90, step: 0.02,  group: 'Kernel Hybrid', label: 'Inner Radius Ratio', hint: '↑ Larger inner disk relative to outer radius',                                                 shader: 'transition' },
@@ -97,20 +38,55 @@ export const TUNABLE_PARAMS = [
     { key: 'kernelBirthWidth',       default: 0.18, min: 0.01,  max: 0.60, step: 0.01,  group: 'Kernel Hybrid', label: 'Birth Width',       hint: 'Width of birth window. Narrower gives more selective activation',                         shader: 'transition' },
     { key: 'kernelSurvivalCenter',   default: 0.46, min: 0.0,   max: 1.0,  step: 0.01,  group: 'Kernel Hybrid', label: 'Survival Center',   hint: 'Center of outer-ring density window that sustains active cells',                          shader: 'transition' },
     { key: 'kernelSurvivalWidth',    default: 0.22, min: 0.01,  max: 0.60, step: 0.01,  group: 'Kernel Hybrid', label: 'Survival Width',    hint: 'Width of survival window. Narrower favors sharper persistent structures',                 shader: 'transition' },
-    { key: 'kernelColorToLGain',     default: 0.15, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Color -> L Coupling', hint: '↑ Chroma mismatch pushes L structure more (color drives shape)',                            shader: 'transition' },
-    { key: 'kernelLToColorGain',     default: 0.25, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'L -> Color Coupling', hint: '↑ Kernel activity drives color advection more (shape drives color motion)',                shader: 'transition' },
-    { key: 'colorWaveDamping',       default: 0.75, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Color Wave Damping', hint: '↑ Suppresses broad non-local color waves; favors local transport',                           shader: 'transition' },
-    { key: 'colorPocketGain',        default: 0.35, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Color Pocket Gain',  hint: '↑ Reinforces local chroma neighborhoods against global color averaging',                    shader: 'transition' },
+    { key: 'kernelSecondaryGain',    default: 0.00, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Secondary Scale Gain', hint: 'Adds a second structural kernel scale (left=off, right=stronger multiscale competition)', shader: 'transition' },
+    { key: 'kernelSecondaryRadius',  default: 2.00, min: 1.0,   max: 4.0,  step: 0.1,   group: 'Kernel Hybrid', label: 'Secondary Radius',    hint: 'Radius multiplier for the second structural scale',                                      shader: 'transition' },
+    { key: 'kernelSecondaryInner',   default: 0.60, min: 0.20,  max: 0.90, step: 0.02,  group: 'Kernel Hybrid', label: 'Secondary Inner Ratio', hint: 'Inner/outer split for the second scale kernel',                                          shader: 'transition' },
+    { key: 'kernelColorToLGain',     default: 0.20, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Color -> L Coupling', hint: '↑ Chroma mismatch pushes L structure more (color drives shape)',                            shader: 'transition' },
+    { key: 'kernelLToColorGain',     default: 0.35, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'L -> Color Coupling', hint: '↑ Kernel activity drives color advection more (shape drives color motion)',                shader: 'transition' },
+    { key: 'colorWaveDamping',       default: 0.00, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Color Wave Damping', hint: '↑ Suppresses broad non-local color waves; favors local transport',                           shader: 'transition' },
+    { key: 'colorPocketGain',        default: 0.30, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Color Pocket Gain',  hint: '↑ Reinforces local chroma neighborhoods against global color averaging',                    shader: 'transition' },
+    { key: 'fieldMomentCoupling',    default: 0.18, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Field Moment Coupling', hint: 'Couples L and chroma via local variance moments (implicit only)',                        shader: 'transition' },
+    { key: 'crossMomentCoupling',    default: 0.14, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Cross Moment Coupling', hint: 'Couples updates via local L/chroma covariance around each cell',                         shader: 'transition' },
+    { key: 'scaleMomentCoupling',    default: 0.12, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Kernel Hybrid', label: 'Scale Moment Coupling', hint: 'Couples updates through local vs neighborhood scale separation',                           shader: 'transition' },
+
+    // ================================================================
+    //  CHROMA TRANSPORT (still active in kernel-only mode)
+    // ================================================================
+    
+    { key: 'coreColorRate',          default: 1.00, min: 0.0,   max: 10.0, step: 0.1,   group: 'Chroma Transport', label: 'Color Update Rate',  hint: 'Overall speed of chroma dynamics',                                                             shader: 'transition' },
+    { key: 'coreAdoptGain',          default: 0.85, min: 0.0,   max: 4.0,  step: 0.1,   group: 'Chroma Transport', label: 'Color Adoption',     hint: 'Neighbor-driven chroma transport strength',                                                  shader: 'transition' },
+    { key: 'coreGrowthHueCoupling',  default: 0.25, min: 0.0,   max: 2.0,  step: 0.1,   group: 'Chroma Transport', label: 'Momentum Hue Coupling', hint: 'How strongly L momentum rotates/transports chroma',                                          shader: 'transition' },
+    { key: 'coreMaxDeltaAB',         default: 0.10, min: 0.01,  max: 0.30, step: 0.01,  group: 'Chroma Transport', label: 'Max Color Change/Step', hint: 'Rate limiter for chroma updates',                                                             shader: 'transition' },
+    { key: 'noiseGain',              default: 0.01, min: 0.0,   max: 0.10, step: 0.005, group: 'Chroma Transport', label: 'Noise',              hint: 'Small stochastic forcing used by both L/chroma updates',                                    shader: 'transition' },
+    { key: 'memoryDecay',            default: 0.05, min: 0.01,  max: 0.20, step: 0.01,  group: 'Chroma Transport', label: 'Memory Decay',       hint: 'Controls lag in the momentum memory channel M',                                              shader: 'transition' },
+
+    // ================================================================
+    //  GEOMETRIC CHROMA FLOW (legacy interactions worth preserving)
+    // ================================================================
+    
+    { key: 'angleL',                 default: 0.0,  min: 0.0,   max: 2.0,  step: 0.1,   group: 'Flow Geometry', label: 'L -> Angle',          hint: 'L contribution magnitude to chroma transport direction',                                     shader: 'transition' },
+    { key: 'angleM',                 default: 0.0,  min: 0.0,   max: 2.0,  step: 0.1,   group: 'Flow Geometry', label: 'Momentum -> Angle',   hint: 'Memory/momentum contribution magnitude to chroma transport direction',                      shader: 'transition' },
+    { key: 'angleS',                 default: 0.0,  min: 0.0,   max: 2.0,  step: 0.1,   group: 'Flow Geometry', label: 'Saturation -> Angle', hint: 'Saturation contribution magnitude to chroma transport direction',                           shader: 'transition' },
+    { key: 'angleV',                 default: 0.0,  min: 0.0,   max: 2.0,  step: 0.1,   group: 'Flow Geometry', label: 'Variance -> Angle',   hint: 'Variance contribution to chroma transport direction',                                       shader: 'transition' },
+    { key: 'angleQuantization',      default: 1.0,  min: 1.0,   max: 16.0, step: 1.0,   group: 'Flow Geometry', label: 'Angle Quantization',  hint: 'Discrete direction bins for chroma flow',                                                   shader: 'transition' },
+    { key: 'positionAngleBias',      default: 0.0,  min: 0.0,   max: 2.0,  step: 0.1,   group: 'Flow Geometry', label: 'Position Bias',       hint: 'Spatial heterogeneity in local flow directions',                                            shader: 'transition' },
+    { key: 'spatialFrequency',       default: 5.0,  min: 1.0,   max: 20.0, step: 1.0,   group: 'Flow Geometry', label: 'Spatial Frequency',   hint: 'Scale of position-dependent angular variation',                                             shader: 'transition' },
+    { key: 'momentumThreshold',      default: 0.8,  min: 0.5,   max: 2.0,  step: 0.1,   group: 'Flow Geometry', label: 'Momentum Lock',       hint: 'Threshold for momentum-driven directional locking',                                         shader: 'transition' },
+    { key: 'varianceThreshold',      default: 0.6,  min: 0.3,   max: 1.5,  step: 0.1,   group: 'Flow Geometry', label: 'Variance Lock',       hint: 'Threshold for variance-driven directional locking',                                         shader: 'transition' },
+    { key: 'memoryFreqScale',        default: 10.0, min: 1.0,   max: 50.0, step: 1.0,   group: 'Flow Geometry', label: 'Memory Frequency',    hint: 'Spatial variation in memory decay frequency',                                               shader: 'transition' },
+    { key: 'diversityKick',          default: 0.00, min: 0.0,   max: 2.0,  step: 0.1,   group: 'Flow Geometry', label: 'Diversity Kick',      hint: 'Amplifies intrinsic chroma anti-collapse and adds extra bursts in uniform regions',       shader: 'transition' },
+    { key: 'antiConsensusGain',      default: 0.18, min: 0.0,   max: 1.5,  step: 0.05,  group: 'Flow Geometry', label: 'Anti-Consensus',      hint: 'Breakup force in flat chroma curvature regions',                                            shader: 'transition' },
+    { key: 'vorticityGain',          default: 0.00, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Flow Geometry', label: 'Vorticity',           hint: 'Couples local L curl into chroma rotational flow',                                          shader: 'transition' },
 
     // ================================================================
     //  SOURCE GUIDANCE (STRUCTURAL BIAS, NO OVERLAY)
     // ================================================================
-
-    { key: 'sourceGuidanceGain',     default: 0.55, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Source Guidance', label: 'Guidance Gain',      hint: '↑ Stronger source-geometry influence on local rule coefficients',                        shader: 'transition' },
-    { key: 'sourceAnisotropy',       default: 1.20, min: 0.0,   max: 4.0,  step: 0.1,   group: 'Source Guidance', label: 'Kernel Anisotropy',  hint: '↑ Kernel elongates more along source orientation where coherence is high',               shader: 'transition' },
+    
+    { key: 'sourceGuidanceGain',     default: 0.25, min: 0.0,   max: 2.0,  step: 0.05,  group: 'Source Guidance', label: 'Guidance Gain',      hint: '↑ Stronger source-geometry influence on local rule coefficients',                        shader: 'transition' },
+    { key: 'sourceAnisotropy',       default: 0.80, min: 0.0,   max: 4.0,  step: 0.1,   group: 'Source Guidance', label: 'Kernel Anisotropy',  hint: '↑ Kernel elongates more along source orientation where coherence is high',               shader: 'transition' },
     { key: 'sourceCoherenceFloor',   default: 0.20, min: 0.0,   max: 1.0,  step: 0.02,  group: 'Source Guidance', label: 'Coherence Floor',   hint: 'Minimum coherence required before orientation bias activates strongly',                   shader: 'transition' },
-    { key: 'sourceRidgeBias',        default: 0.35, min: -1.0,  max: 1.0,  step: 0.05,  group: 'Source Guidance', label: 'Ridge Growth Bias', hint: 'Positive: ridges favor growth; negative: ridges favor inhibition',                        shader: 'transition' },
-    { key: 'sourceEdgeFrequency',    default: 0.55, min: 0.0,   max: 1.0,  step: 0.02,  group: 'Source Guidance', label: 'Edge Frequency',    hint: '↑ Use finer details in source edges. ↓ Use broader/coarser structure',                  shader: 'existing' },
+    { key: 'sourceRidgeBias',        default: 0.20, min: 0.0,   max: 1.0,  step: 0.05,  group: 'Source Guidance', label: 'Ridge Growth Bias', hint: 'Ridge-driven growth/inhibition modulation strength',                                      shader: 'transition' },
+    { key: 'sourceEdgeFrequency',    default: 0.20, min: 0.0,   max: 1.0,  step: 0.02,  group: 'Source Guidance', label: 'Edge Frequency',    hint: '↑ Use finer details in source edges. ↓ Use broader/coarser structure',                  shader: 'existing' },
     { key: 'showGuidanceEdges',      default: false,                                   group: 'Source Guidance', label: 'Show Guidance Edges', hint: 'Overlay the source guidance edges used by the kernel',                                    shader: 'display', control: 'checkbox' },
 
     // ================================================================
