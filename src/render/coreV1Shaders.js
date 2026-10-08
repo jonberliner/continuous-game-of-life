@@ -16,11 +16,69 @@ uniform float u_showGuidanceEdges;
 uniform vec2 u_texel;
 uniform float u_structureIdentityMix;
 uniform float u_structureIdentityColor;
+
+// Artist palette. Colors arrive pre-converted to OKLab so blends between
+// arbitrary picks stay clean instead of going muddy through sRGB.
+uniform float u_paletteOn;
+uniform vec3 u_palette[8];
+uniform float u_paletteCount;
+uniform vec3 u_paletteBackground;
+uniform float u_paletteFill;
+uniform float u_paletteBands;
+uniform float u_paletteShading;
+uniform float u_paletteShift;
 varying vec2 v_texCoord;
 
 vec3 hsv2rgb(vec3 c) {
     vec3 p = abs(fract(c.xxx + vec3(0.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
     return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+}
+
+vec3 oklab2srgb(vec3 lab) {
+    float l_ = lab.x + 0.3963377774 * lab.y + 0.2158037573 * lab.z;
+    float m_ = lab.x - 0.1055613458 * lab.y - 0.0638541728 * lab.z;
+    float s_ = lab.x - 0.0894841775 * lab.y - 1.2914855480 * lab.z;
+    vec3 lms = vec3(l_ * l_ * l_, m_ * m_ * m_, s_ * s_ * s_);
+    vec3 lin = vec3(
+         4.0767416621 * lms.x - 3.3077115913 * lms.y + 0.2309699292 * lms.z,
+        -1.2684380046 * lms.x + 2.6097574011 * lms.y - 0.3413193965 * lms.z,
+        -0.0041960863 * lms.x - 0.7034186147 * lms.y + 1.7076147010 * lms.z
+    );
+    lin = clamp(lin, 0.0, 1.0);
+    vec3 lo = lin * 12.92;
+    vec3 hi = 1.055 * pow(lin, vec3(1.0 / 2.4)) - 0.055;
+    return mix(lo, hi, step(vec3(0.0031308), lin));
+}
+
+// GLSL ES 1.0 only guarantees constant/loop indexing of uniform arrays.
+vec3 paletteAt(float idx) {
+    vec3 c = u_palette[0];
+    for (int i = 0; i < 8; i++) {
+        if (abs(float(i) - idx) < 0.5) c = u_palette[i];
+    }
+    return c;
+}
+
+// Hue angle walks around the palette as a loop; bands sharpens the hand-off
+// between neighbouring colors from a smooth blend into a hard poster edge.
+vec3 samplePalette(float h) {
+    float count = max(1.0, u_paletteCount);
+    float pos = fract(h + u_paletteShift) * count;
+    float i0 = floor(pos);
+    float i1 = mod(i0 + 1.0, count);
+    float w = mix(0.5, 0.002, clamp(u_paletteBands, 0.0, 1.0));
+    float t = smoothstep(0.5 - w, 0.5 + w, fract(pos));
+    return mix(paletteAt(i0), paletteAt(i1), t);
+}
+
+vec3 paletteColor(float h, float s, float v) {
+    // Fill bends the saturation curve: high fill reaches full palette color at low saturation.
+    float chroma = pow(clamp(s, 0.0, 1.0), mix(1.6, 0.12, clamp(u_paletteFill, 0.0, 1.0)));
+    vec3 lab = mix(u_paletteBackground, samplePalette(h), chroma);
+    // Shading: mid brightness shows the exact picked color; below darkens, above glows toward white.
+    float lightness = mix(1.0, v * 2.0, clamp(u_paletteShading, 0.0, 1.0));
+    vec3 rgb = oklab2srgb(lab);
+    return lightness <= 1.0 ? rgb * lightness : mix(rgb, vec3(1.0), clamp(lightness - 1.0, 0.0, 1.0));
 }
 
 void main() {
@@ -61,7 +119,9 @@ void main() {
     float satComposed = clamp(s + clamp(u_structureIdentityMix, 0.0, 1.0) * clamp(u_structureIdentityColor, 0.0, 1.0) * (structureIdentity - 0.5) * 0.6, 0.0, 1.0);
     float h = fract(atan(b, a) / 6.28318530718);
     
-    vec3 rgb = hsv2rgb(vec3(h, satComposed, clamp(valueComposed, 0.02, 0.98)));
+    vec3 rgb = u_paletteOn > 0.5
+        ? paletteColor(h, satComposed, valueComposed)
+        : hsv2rgb(vec3(h, satComposed, clamp(valueComposed, 0.02, 0.98)));
     vec4 guidance = texture2D(u_sourceGuidance, v_texCoord);
     float edgeMask = smoothstep(0.22, 0.72, guidance.a) * clamp(u_showGuidanceEdges, 0.0, 1.0);
     float overlayOn = clamp(u_showGuidanceEdges, 0.0, 1.0);

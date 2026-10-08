@@ -4,8 +4,9 @@
 
 import { CoreV1Engine } from './core/coreV1Engine.js';
 import { FrequencyGoLEngine } from './core/frequencyEngine.js';
-import { loadImage, createDefaultImage } from './render/imageLoader.js';
+import { loadImage, loadImageFromUrl, createDefaultImage } from './render/imageLoader.js';
 import { ControlsManager } from './ui/controls.js';
+import { AmbientLife } from './ui/ambient.js';
 
 function clamp01(x) {
     return Math.max(0, Math.min(1, x));
@@ -764,6 +765,7 @@ class KernelDiagnostics {
 
     reset() {
         this.stepAccum = 0;
+        this.lastSampleAt = 0;
         this.prevSample = null;
         this.ema = null;
     }
@@ -774,17 +776,32 @@ class KernelDiagnostics {
             controls.setKernelDiagnosticsText('Kernel diagnostics: spatial mode only.');
             return;
         }
+        // Sample on wall-clock time (not a fixed step count) so the HUD stays alive at any speed,
+        // and normalize deltas per simulated step so readings don't depend on speed.
         this.stepAccum += Math.max(0, simStepsAdvanced || 0);
-        if (this.stepAccum < this.intervalSimSteps) return;
-        this.stepAccum -= this.intervalSimSteps;
+        const now = performance.now();
+        if (this.stepAccum < 2 || now - (this.lastSampleAt || 0) < 400) return;
+        const stepsSinceSample = this.stepAccum;
+        this.stepAccum = 0;
+        this.lastSampleAt = now;
 
         const pixels = engine.readCurrentStatePixels();
         const metrics = this.computeMetrics(pixels, engine.width, engine.height);
+        if (metrics) {
+            metrics.absDL /= stepsSinceSample;
+            metrics.absDAB /= stepsSinceSample;
+        }
         if (!metrics) {
             controls.setKernelDiagnosticsText('Kernel diagnostics warming up...');
             return;
         }
         const smooth = this.smooth(metrics);
+        if (typeof controls.setVitals === 'function') {
+            controls.setVitals({
+                motion: 1.0 - Math.exp(-smooth.absDL * 50.0),
+                color: 1.0 - Math.exp(-smooth.absDAB * 70.0)
+            });
+        }
         const parity = smooth.absDL > 1.0e-6 ? smooth.absDAB / smooth.absDL : 0.0;
         const parityState = parity < 0.7 ? 'L-dominant' : (parity > 1.5 ? 'Chroma-dominant' : 'balanced');
         controls.setKernelDiagnosticsText(
@@ -899,14 +916,19 @@ class ContinuousGameOfLife {
         this.createEngine();
         
         // Setup controls
-        this.controls = new ControlsManager(
-            (params) => this.onParamChange(params),
-            (file) => this.onImageUpload(file),
-            () => this.togglePause(),
-            () => this.reset(),
-            (mode) => this.switchMode(mode)  // New: mode switcher
-        );
+        this.controls = new ControlsManager({
+            onParamChange: (params) => this.onParamChange(params),
+            onImageFile: (file) => this.onImageUpload(file),
+            onImageUrl: (url) => this.onImageUrl(url),
+            onPause: () => this.togglePause(),
+            onRestart: () => this.reset(),
+            onSnapshot: () => this.snapshot()
+        });
         this.updatePipelineStatus(this.controls.getParams());
+        this.ambient = new AmbientLife(document.getElementById('ambient'));
+        const startParams = this.controls.getParams();
+        this.ambient.setPalette(startParams.palette, startParams.paletteBackground);
+        document.addEventListener('cgol:palette', (e) => this.ambient.setPalette(e.detail.colors, e.detail.background));
         
         // Start animation
         this.start();
@@ -915,6 +937,24 @@ class ContinuousGameOfLife {
     setupCanvas() {
         this.canvas.width = this.imageData.width;
         this.canvas.height = this.imageData.height;
+        this.fitCanvas();
+        if (!this.stageObserver) {
+            this.stageObserver = new ResizeObserver(() => this.fitCanvas());
+            this.stageObserver.observe(document.querySelector('.stage'));
+        }
+    }
+
+    // Scale the canvas up (or down) to the largest size that fits the stage at the image's aspect ratio.
+    fitCanvas() {
+        const stage = document.querySelector('.stage');
+        if (!stage || !this.imageData) return;
+        const aspect = this.imageData.width / this.imageData.height;
+        const narrow = window.matchMedia('(max-width: 900px)').matches;
+        const availW = stage.clientWidth - (narrow ? 52 : 76);
+        const availH = narrow ? availW / aspect : stage.clientHeight - 110;
+        const w = Math.max(64, Math.min(availW, availH * aspect));
+        this.canvas.style.width = `${Math.floor(w)}px`;
+        this.canvas.style.height = `${Math.floor(w / aspect)}px`;
     }
     
     createEngine() {
@@ -985,14 +1025,23 @@ class ContinuousGameOfLife {
         parent.appendChild(newCanvas);
         
         this.canvas = newCanvas;
+        this.fitCanvas();
     }
     
     async onImageUpload(file) {
+        await this.swapImage(() => loadImage(file), 'Failed to load image. Please try another file.');
+    }
+
+    async onImageUrl(url) {
+        this.controls.toast('Fetching image…');
+        await this.swapImage(() => loadImageFromUrl(url));
+    }
+
+    async swapImage(load, fallbackMessage) {
         try {
+            const loadedImage = await load();
             const wasRunning = this.isRunning;
             this.stop();
-            
-            const loadedImage = await loadImage(file);
             this.imageData = loadedImage;
             
             this.setupCanvas();
@@ -1003,14 +1052,42 @@ class ContinuousGameOfLife {
             } else {
                 this.engine.render();
             }
+            this.glitch();
+            this.controls.toast('New image. Life restarts.');
         } catch (error) {
             console.error('Failed to load image:', error);
-            alert('Failed to load image. Please try another file.');
+            this.controls.toast(fallbackMessage || error.message);
         }
     }
-    
+
     onParamChange(params) {
         this.updatePipelineStatus(params);
+        // While paused, still repaint so palette and display tweaks show immediately.
+        if (this.isPaused && this.engine) {
+            this.engine.lastParams = { ...params, deltaTime: this.fixedSimulationDelta };
+            this.engine.render();
+        }
+    }
+
+    snapshot() {
+        this.engine.render();
+        this.canvas.toBlob((blob) => {
+            if (!blob) return;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `continuous-life-${Date.now()}.png`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+        this.glitch();
+        this.controls.toast('Snapshot saved.');
+    }
+
+    glitch() {
+        document.body.classList.remove('glitching');
+        void document.body.offsetWidth;
+        document.body.classList.add('glitching');
     }
     
     togglePause() {
@@ -1026,6 +1103,7 @@ class ContinuousGameOfLife {
         this.simAccumulator = 0;
         this.kernelDiagnostics.reset();
         this.engine.render();
+        this.glitch();
         
         if (wasRunning) {
             this.start();

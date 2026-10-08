@@ -29,6 +29,35 @@ export function loadImage(file) {
     });
 }
 
+/**
+ * Load an image from a URL. The host must allow cross-origin reads (CORS),
+ * otherwise the browser won't let us read the pixels back.
+ */
+export function loadImageFromUrl(url) {
+    return new Promise((resolve, reject) => {
+        let parsed;
+        try {
+            parsed = new URL(url, window.location.href);
+        } catch {
+            reject(new Error("That doesn't look like a URL."));
+            return;
+        }
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            try {
+                resolve(resizeImage(img, 1080));
+            } catch {
+                reject(new Error("That site won't share its pixels (no CORS). Download the image and drop it in instead."));
+            }
+        };
+        img.onerror = () => {
+            reject(new Error("Couldn't load that image. The link may be broken, or the site blocks sharing (CORS). Try downloading it and dropping it in."));
+        };
+        img.src = parsed.href;
+    });
+}
+
 export function resizeImage(img, maxSize) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');

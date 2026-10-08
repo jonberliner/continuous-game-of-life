@@ -13,6 +13,8 @@ import {
     setupQuadFlipped,
     bindQuadAttributes
 } from '../render/webglUtils.js';
+import { hexToOklab } from '../render/color.js';
+import { DEFAULT_PALETTE, MAX_PALETTE_COLORS } from '../ui/tunableParams.js';
 
 function clamp01(x) {
     return Math.max(0, Math.min(1, x));
@@ -628,8 +630,40 @@ export class CoreV1Engine {
             this.lastParams?.structureIdentityColor ?? 0.0
         );
         
+        this.setPaletteUniforms(this.lastParams || {});
+
         bindQuadAttributes(gl, this.displayQuad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    setPaletteUniforms(params) {
+        const gl = this.gl;
+        const prog = this.displayProgram;
+        const colors = (Array.isArray(params.palette) && params.palette.length
+            ? params.palette
+            : DEFAULT_PALETTE.colors).slice(0, MAX_PALETTE_COLORS);
+        const background = params.paletteBackground || DEFAULT_PALETTE.background;
+        const cacheKey = colors.join(',') + '|' + background;
+        if (cacheKey !== this._paletteCacheKey) {
+            const flat = new Float32Array(MAX_PALETTE_COLORS * 3);
+            colors.forEach((hex, i) => flat.set(hexToOklab(hex), i * 3));
+            this._paletteFlat = flat;
+            this._paletteCount = colors.length;
+            this._paletteBackground = hexToOklab(background);
+            this._paletteCacheKey = cacheKey;
+        }
+        // Drift: 1.0 on the slider is one full trip around the palette every 20 seconds.
+        const drift = (params.paletteCycle ?? 0) * (performance.now() / 1000) * 0.05;
+        const shift = (((params.paletteShift ?? 0) + drift) % 1 + 1) % 1;
+
+        gl.uniform1f(gl.getUniformLocation(prog, 'u_paletteOn'), params.paletteOn === false ? 0.0 : 1.0);
+        gl.uniform3fv(gl.getUniformLocation(prog, 'u_palette'), this._paletteFlat);
+        gl.uniform1f(gl.getUniformLocation(prog, 'u_paletteCount'), this._paletteCount);
+        gl.uniform3fv(gl.getUniformLocation(prog, 'u_paletteBackground'), this._paletteBackground);
+        gl.uniform1f(gl.getUniformLocation(prog, 'u_paletteFill'), params.paletteFill ?? 0.55);
+        gl.uniform1f(gl.getUniformLocation(prog, 'u_paletteBands'), params.paletteBands ?? 0.25);
+        gl.uniform1f(gl.getUniformLocation(prog, 'u_paletteShading'), params.paletteShading ?? 0.7);
+        gl.uniform1f(gl.getUniformLocation(prog, 'u_paletteShift'), shift);
     }
 
     readCurrentStatePixels() {
