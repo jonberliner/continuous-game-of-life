@@ -11,12 +11,14 @@ export class ControlsManager {
      *   onParamChange(params), onImageFile(file), onImageUrl(url),
      *   onPause(), onRestart(), onSnapshot()
      */
-    constructor(handlers) {
+    constructor(handlers, initialParams = null) {
         this.handlers = handlers;
+        this.abort = new AbortController();
         this.onParamChange = (params) => this.handlers.onParamChange?.(params);
 
         // Initialize params from TUNABLE_PARAMS
         this.params = this.defaultParams();
+        if (initialParams) this.adoptParams(initialParams);
 
         // Load saved configs from localStorage
         this.loadSavedConfigs();
@@ -58,6 +60,17 @@ export class ControlsManager {
             console.error('Failed to save config:', e);
         }
         this.updateConfigList();
+    }
+
+    // Take over a look from the other control mode, clamped to this mode's slider ranges.
+    adoptParams(params) {
+        for (const p of TUNABLE_PARAMS) {
+            if (!(p.key in params)) continue;
+            const v = params[p.key];
+            this.params[p.key] = p.control === 'checkbox' ? !!v : Math.max(p.min, Math.min(p.max, Number(v)));
+        }
+        if (Array.isArray(params.palette) && params.palette.length) this.params.palette = [...params.palette];
+        if (params.paletteBackground) this.params.paletteBackground = params.paletteBackground;
     }
 
     applyParams(params) {
@@ -522,6 +535,7 @@ export class ControlsManager {
     // ------------------------------------------------------------------
 
     bindGlobalInput() {
+        const { signal } = this.abort;
         document.addEventListener('keydown', (e) => {
             const t = e.target;
             if (t instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) && t.type !== 'range' && t.type !== 'checkbox') return;
@@ -530,7 +544,7 @@ export class ControlsManager {
                 e.preventDefault();
                 this.handlers.onPause?.();
             }
-        });
+        }, { signal });
 
         let dragDepth = 0;
         const veil = document.getElementById('dropveil');
@@ -538,12 +552,12 @@ export class ControlsManager {
             if (!e.dataTransfer?.types?.some((t) => t === 'Files' || t === 'text/uri-list')) return;
             dragDepth++;
             veil?.classList.add('on');
-        });
+        }, { signal });
         window.addEventListener('dragleave', () => {
             dragDepth = Math.max(0, dragDepth - 1);
             if (!dragDepth) veil?.classList.remove('on');
-        });
-        window.addEventListener('dragover', (e) => e.preventDefault());
+        }, { signal });
+        window.addEventListener('dragover', (e) => e.preventDefault(), { signal });
         window.addEventListener('drop', (e) => {
             e.preventDefault();
             dragDepth = 0;
@@ -555,7 +569,7 @@ export class ControlsManager {
             }
             const url = e.dataTransfer?.getData('text/uri-list') || e.dataTransfer?.getData('text/plain');
             if (url && /^https?:/i.test(url.trim())) this.handlers.onImageUrl?.(url.trim().split('\n')[0]);
-        });
+        }, { signal });
 
         window.addEventListener('paste', (e) => {
             const t = e.target;
@@ -565,7 +579,11 @@ export class ControlsManager {
                 const file = item.getAsFile();
                 if (file) this.handlers.onImageFile?.(file);
             }
-        });
+        }, { signal });
+    }
+
+    destroy() {
+        this.abort.abort();
     }
 
     toast(message) {

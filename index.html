@@ -18,6 +18,7 @@
                 <h1 class="glitch" data-text="CONTINUOUS//LIFE">CONTINUOUS//LIFE</h1>
                 <span class="brand-tag">smoothlife · color cellular automata</span>
             </div>
+            <nav class="transport" id="transport" aria-label="Playback"></nav>
         </header>
 
         <main class="layout">
@@ -29,9 +30,19 @@
                     <canvas id="glCanvas"></canvas>
                 </div>
                 <div class="hud" id="hud" aria-live="off">MOTION ▯▯▯▯▯▯▯▯  COLOR ▯▯▯▯▯▯▯▯</div>
+                <div class="keys" aria-hidden="true">
+                    <span><kbd>space</kbd> pause</span>
+                    <span><kbd>R</kbd> restart</span>
+                    <span><kbd>M</kbd> mutate</span>
+                    <span><kbd>S</kbd> snapshot</span>
+                </div>
             </section>
 
             <aside class="panel" aria-label="Controls">
+                <div class="ui-mode" role="group" aria-label="Control style">
+                    <button type="button" data-mode="classic">classic</button>
+                    <button type="button" data-mode="streamlined">streamlined</button>
+                </div>
                 <div class="controls-container"></div>
             </aside>
         </main>

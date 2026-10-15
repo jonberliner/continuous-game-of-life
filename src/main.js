@@ -5,7 +5,10 @@
 import { CoreV1Engine } from './core/coreV1Engine.js';
 import { FrequencyGoLEngine } from './core/frequencyEngine.js';
 import { loadImage, loadImageFromUrl, createDefaultImage } from './render/imageLoader.js';
-import { ControlsManager } from './ui/controls.js';
+import { ControlsManager as ClassicControls } from './ui/controls.js';
+import { ControlsManager as StreamlinedControls } from './ui/streamlinedControls.js';
+
+const UI_MODE_KEY = 'caUiMode';
 import { AmbientLife } from './ui/ambient.js';
 
 function clamp01(x) {
@@ -906,6 +909,36 @@ class ContinuousGameOfLife {
         this.init();
     }
     
+    // Swap between the classic slider panel and the streamlined drawers,
+    // carrying the current look across so nothing on the canvas changes.
+    setUiMode(mode) {
+        if (this.controls && this.uiMode === mode) return;
+        const carried = this.controls ? this.controls.getParams() : null;
+        this.controls?.destroy();
+        const Manager = mode === 'streamlined' ? StreamlinedControls : ClassicControls;
+        this.controls = new Manager({
+            onParamChange: (params) => this.onParamChange(params),
+            onImageFile: (file) => this.onImageUpload(file),
+            onImageUrl: (url) => this.onImageUrl(url),
+            onPause: () => this.togglePause(),
+            onRestart: () => this.reset(),
+            onSnapshot: () => this.snapshot()
+        }, carried);
+        this.uiMode = mode;
+        this.controls.updatePauseButton(!!this.isPaused);
+        document.body.classList.toggle('ui-classic', mode === 'classic');
+        document.body.classList.toggle('ui-streamlined', mode === 'streamlined');
+        document.querySelectorAll('.ui-mode button').forEach((btn) => {
+            btn.setAttribute('aria-pressed', String(btn.dataset.mode === mode));
+        });
+        try {
+            localStorage.setItem(UI_MODE_KEY, mode);
+        } catch {
+            // Fine: the mode just won't be remembered.
+        }
+        if (carried) this.onParamChange(this.controls.getParams());
+    }
+
     async init() {
         // Create default image
         const defaultImg = createDefaultImage(512, 512);
@@ -916,13 +949,15 @@ class ContinuousGameOfLife {
         this.createEngine();
         
         // Setup controls
-        this.controls = new ControlsManager({
-            onParamChange: (params) => this.onParamChange(params),
-            onImageFile: (file) => this.onImageUpload(file),
-            onImageUrl: (url) => this.onImageUrl(url),
-            onPause: () => this.togglePause(),
-            onRestart: () => this.reset(),
-            onSnapshot: () => this.snapshot()
+        let mode = 'classic';
+        try {
+            if (localStorage.getItem(UI_MODE_KEY) === 'streamlined') mode = 'streamlined';
+        } catch {
+            // Storage blocked: start in classic.
+        }
+        this.setUiMode(mode);
+        document.querySelectorAll('.ui-mode button').forEach((btn) => {
+            btn.addEventListener('click', () => this.setUiMode(btn.dataset.mode));
         });
         this.updatePipelineStatus(this.controls.getParams());
         this.ambient = new AmbientLife(document.getElementById('ambient'));

@@ -709,6 +709,17 @@ input[type="range"]::-webkit-slider-runnable-track {
     background: var(--line-hot);
 }
 
+/* streamlined knobs fill up to the thumb */
+.knob input[type="range"]::-webkit-slider-runnable-track,
+.speed input[type="range"]::-webkit-slider-runnable-track {
+    background: linear-gradient(90deg, var(--acid) var(--fill), var(--line-hot) var(--fill));
+}
+
+.knob input[type="range"]::-moz-range-track,
+.speed input[type="range"]::-moz-range-track {
+    background: linear-gradient(90deg, var(--acid) var(--fill), var(--line-hot) var(--fill));
+}
+
 input[type="range"]::-moz-range-track {
     height: 2px;
     background: var(--line-hot);
@@ -1348,3 +1359,35 @@ input[type="range"]:focus-visible {
 .config-section .config-input {
     flex-basis: 100%;
 }
+
+/* ---------- control style switch ---------------------------------------- */
+
+.ui-mode {
+    display: flex;
+    margin-bottom: 14px;
+    border: 1px solid var(--line-hot);
+}
+
+.ui-mode button {
+    flex: 1;
+    padding: 6px 10px;
+    background: transparent;
+    border: 0;
+    color: var(--dim);
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.ui-mode button:hover { color: var(--ink); }
+
+.ui-mode button[aria-pressed="true"] {
+    background: var(--acid);
+    color: #000;
+}
+
+/* the transport bar and shortcut hints belong to streamlined mode */
+body.ui-classic .keys,
+.transport:empty { display: none; }
