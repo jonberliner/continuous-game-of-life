@@ -706,12 +706,12 @@ input[type="range"] {
 
 input[type="range"]::-webkit-slider-runnable-track {
     height: 2px;
-    background: linear-gradient(90deg, var(--acid) var(--fill), var(--line-hot) var(--fill));
+    background: var(--line-hot);
 }
 
 input[type="range"]::-moz-range-track {
     height: 2px;
-    background: linear-gradient(90deg, var(--acid) var(--fill), var(--line-hot) var(--fill));
+    background: var(--line-hot);
 }
 
 input[type="range"]::-webkit-slider-thumb {
@@ -1157,4 +1157,194 @@ input[type="range"]:focus-visible {
         animation: none !important;
         transition: none !important;
     }
+}
+
+/* ==========================================================================
+   Classic control panel (restored layout: header + collapsible groups)
+   ========================================================================== */
+
+.controls-header h2 {
+    font-family: var(--pixel);
+    font-weight: 400;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+
+.header-buttons,
+.config-section {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.url-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.header-buttons button,
+.config-section button,
+.url-row button,
+.btn-import-label,
+.config-load-btn {
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px solid var(--line-hot);
+    color: var(--ink);
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.header-buttons button:hover,
+.config-section button:hover,
+.url-row button:hover,
+.btn-import-label:hover,
+.config-load-btn:hover {
+    background: var(--ink);
+    color: #000;
+    border-color: var(--ink);
+}
+
+#btn-pause {
+    border-color: var(--acid);
+    color: var(--acid);
+}
+
+.config-input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--line-hot);
+    color: var(--ink);
+    font: inherit;
+    font-size: 12px;
+    outline: none;
+}
+
+.config-input:focus {
+    border-color: var(--acid);
+}
+
+.saved-configs-list {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.config-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 3px 3px 8px;
+    border: 1px solid var(--line);
+}
+
+.config-item .config-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.config-delete-btn {
+    width: 24px;
+    height: 24px;
+    background: none;
+    border: 1px solid transparent;
+    color: var(--faint);
+    cursor: pointer;
+}
+
+.config-delete-btn:hover {
+    border-color: var(--hot);
+    color: var(--hot);
+}
+
+.param-group {
+    border: 1px solid var(--line-hot);
+    background: rgba(0, 0, 0, 0.25);
+}
+
+.param-group-header {
+    padding: 10px 12px;
+    font-family: var(--pixel);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    user-select: none;
+}
+
+.param-group-header::before {
+    content: '▾ ';
+    color: var(--acid);
+}
+
+.param-group.collapsed .param-group-header::before {
+    content: '▸ ';
+    color: var(--dim);
+}
+
+.param-group.collapsed .param-group-content {
+    display: none;
+}
+
+.param-group-content {
+    padding: 0 12px 10px;
+}
+
+.slider-control {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    column-gap: 8px;
+    padding: 8px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.slider-control > label {
+    font-weight: 600;
+    font-size: 12px;
+}
+
+.slider-control > input[type="range"],
+.slider-control > .slider-hint {
+    grid-column: 1 / -1;
+}
+
+.slider-control > input[type="checkbox"] {
+    justify-self: end;
+    accent-color: var(--acid);
+}
+
+.slider-value {
+    font-size: 11px;
+    color: var(--acid);
+    font-variant-numeric: tabular-nums;
+}
+
+.slider-hint {
+    margin-top: 3px;
+    color: var(--dim);
+    font-size: 11px;
+}
+
+.controls-header > .slider-hint {
+    margin-bottom: 4px;
+}
+
+.palette-editor {
+    padding: 4px 0 8px;
+}
+
+.config-section .config-input {
+    flex-basis: 100%;
 }
